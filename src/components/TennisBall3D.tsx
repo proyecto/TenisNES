@@ -4,7 +4,7 @@ import { RigidBody, RapierRigidBody } from '@react-three/rapier';
 import { Mesh } from 'three';
 import { useTennisStore } from '../store/useTennisStore';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
-import { calculateShotVelocity } from '../utils/tennisBallistics';
+import { calculateShotVelocity, evaluateHitReach } from '../utils/tennisBallistics';
 import { evaluateBounce } from '../utils/tennisScoring';
 
 interface TennisBall3DProps {
@@ -23,26 +23,39 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
   const setLastHitter = useTennisStore((state) => state.setLastHitter);
   const awardPoint = useTennisStore((state) => state.awardPoint);
   const recordFault = useTennisStore((state) => state.recordFault);
+  const recordLet = useTennisStore((state) => state.recordLet);
 
   // Track previous space key state to detect single keydown presses
   const prevActionPressed = useRef(false);
   const lastHitTime = useRef(0);
   const serveTossTime = useRef(0);
+  const servePrepEnteredTime = useRef(0);
   const lastBounceTime = useRef(0);
   const bouncesSinceHit = useRef(0);
   const pointResolved = useRef(false);
   const isServeShot = useRef(false);
+  const serveTouchedNet = useRef(false);
+  const serveLandedInBox = useRef(false);
+  const p1SwingAttemptTime = useRef(0);
 
   // Reset ball position when serve_prep begins
   useEffect(() => {
     if (matchStatus === 'serve_prep' && ballBodyRef.current) {
-      const p1 = useTennisStore.getState().p1Pos;
-      ballBodyRef.current.setTranslation({ x: p1[0] - 0.2, y: 1.15, z: p1[2] - 0.3 }, true);
+      const { server, p1Pos, cpuPos } = useTennisStore.getState();
+      const serverPos = server === 'p1' ? p1Pos : cpuPos;
+      const handOffsetX = server === 'p1' ? -0.22 : 0.22;
+      const handOffsetZ = server === 'p1' ? -0.32 : 0.32;
+
+      ballBodyRef.current.setTranslation({ x: serverPos[0] + handOffsetX, y: 1.15, z: serverPos[2] + handOffsetZ }, true);
       ballBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
       ballBodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
       bouncesSinceHit.current = 0;
       pointResolved.current = false;
       isServeShot.current = false;
+      serveTouchedNet.current = false;
+      serveLandedInBox.current = false;
+      p1SwingAttemptTime.current = 0;
+      servePrepEnteredTime.current = performance.now() / 1000;
       useTennisStore.getState().setLastCall(null);
     }
   }, [matchStatus]);
@@ -56,110 +69,181 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
     const ballPos = ballBodyRef.current.translation();
     const ballVel = ballBodyRef.current.linvel();
-    const p1 = useTennisStore.getState().p1Pos;
+    const { p1Pos: p1, cpuPos, server, serveSide } = useTennisStore.getState();
 
     // Sync current ball position and velocity transiently
     useTennisStore.getState().ballPos = [ballPos.x, ballPos.y, ballPos.z];
     useTennisStore.getState().ballVel = [ballVel.x, ballVel.y, ballVel.z];
 
+    // Net contact detection for serve
+    if (isServeShot.current && Math.abs(ballPos.z) < 0.22 && ballPos.y <= 1.05) {
+      serveTouchedNet.current = true;
+    }
+
     // =========================================================================
-    // 1. SERVE PREPARATION: Ball floats in server's hand, waiting for toss
+    // 1. SERVE PREPARATION: Ball floats in server's hand (P1 or CPU)
     // =========================================================================
     if (matchStatus === 'serve_prep') {
-      const handX = p1[0] - 0.22;
-      const handY = 1.15 + Math.sin(t * 3.5) * 0.02;
-      const handZ = p1[2] - 0.32;
+      if (server === 'p1') {
+        const handX = p1[0] - 0.22;
+        const handY = 1.15 + Math.sin(t * 3.5) * 0.02;
+        const handZ = p1[2] - 0.32;
 
-      ballBodyRef.current.setTranslation({ x: handX, y: handY, z: handZ }, true);
-      ballBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        ballBodyRef.current.setTranslation({ x: handX, y: handY, z: handZ }, true);
+        ballBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
 
-      if (isActionJustPressed) {
-        // Toss the ball higher up for a generous arc and realistic travel window
-        serveTossTime.current = t;
-        useTennisStore.getState().setLastCall(null);
-        setMatchStatus('serving');
-        ballBodyRef.current.setLinvel({ x: 0.04, y: 7.2, z: -0.22 }, true);
+        if (isActionJustPressed) {
+          // Player 1 tosses ball up
+          serveTossTime.current = t;
+          useTennisStore.getState().setLastCall(null);
+          setMatchStatus('serving');
+          ballBodyRef.current.setLinvel({ x: 0.04, y: 7.2, z: -0.22 }, true);
+        }
+      } else {
+        // CPU Serve Preparation
+        const handX = cpuPos[0] + 0.22;
+        const handY = 1.15 + Math.sin(t * 3.5) * 0.02;
+        const handZ = cpuPos[2] + 0.32;
+
+        ballBodyRef.current.setTranslation({ x: handX, y: handY, z: handZ }, true);
+        ballBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+
+        // CPU pauses realistically then tosses ball
+        const timeInPrep = (performance.now() / 1000) - servePrepEnteredTime.current;
+        if (timeInPrep > 1.25) {
+          serveTossTime.current = t;
+          useTennisStore.getState().setLastCall(null);
+          setMatchStatus('serving');
+          ballBodyRef.current.setLinvel({ x: -0.04, y: 7.0, z: 0.22 }, true);
+        }
       }
       return;
     }
 
     // =========================================================================
-    // 2. SERVING: Ball is in flight after toss. Player hits at chosen height!
+    // 2. SERVING: Ball in flight after toss. Server executes smash serve!
     // =========================================================================
     if (matchStatus === 'serving') {
       const timeSinceToss = t - serveTossTime.current;
 
-      // Detect serve hit while ball is in the air (between 1.7m and 3.8m)
-      if (isActionJustPressed && ballPos.y >= 1.65 && timeSinceToss > 0.15) {
-        const steeringX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
-        const serveSide = useTennisStore.getState().serveSide;
+      if (server === 'p1') {
+        // Player 1 hits serve at selected height
+        if (isActionJustPressed && ballPos.y >= 1.65 && timeSinceToss > 0.15) {
+          const steeringX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
 
-        // Calculate toss progress / recorrido:
-        // Struck at high apex (~3.4m - 3.7m) -> Maximum power & goes farther into opponent's box (lejos)
-        // Struck earlier/lower (~1.8m - 2.5m) -> Shorter placement closer to net (cerca)
-        const hitHeight = Math.max(1.7, Math.min(3.7, ballPos.y));
-        const recorridoFactor = (hitHeight - 1.7) / (3.7 - 1.7); // 0.0 (cerca) to 1.0 (lejos)
+          const hitHeight = Math.max(1.7, Math.min(3.7, ballPos.y));
+          const recorridoFactor = (hitHeight - 1.7) / (3.7 - 1.7);
+          const targetZ = -2.4 - recorridoFactor * 3.2;
 
-        // Regulation service box depth spans Z in [0, -6.40m]:
-        // Lower hit -> lands closer to net (-2.4m)
-        // High apex hit -> lands deep in service box (-5.6m, near regulation service line)
-        const targetZ = -2.4 - recorridoFactor * 3.2;
+          const baseTargetX = serveSide === 'deuce' ? -2.05 : 2.05;
+          const targetX = baseTargetX + steeringX * 1.35;
 
-        // Regulation diagonal service box lateral placement:
-        // Deuce serve (right) -> aims to left box [-4.115, 0], center = -2.05m
-        // Ad serve (left) -> aims to right box [0, 4.115], center = +2.05m
-        const baseTargetX = serveSide === 'deuce' ? -2.05 : 2.05;
-        const targetX = baseTargetX + steeringX * 1.35;
+          const shot = calculateShotVelocity({
+            fromPos: [ballPos.x, ballPos.y, ballPos.z],
+            targetZ,
+            targetX,
+            steeringX,
+            isServe: true,
+          });
 
-        const shot = calculateShotVelocity({
-          fromPos: [ballPos.x, ballPos.y, ballPos.z],
-          targetZ,
-          targetX,
-          steeringX,
-          isServe: true,
-        });
+          ballBodyRef.current.setLinvel(shot, true);
+          ballBodyRef.current.setAngvel({ x: 10 + recorridoFactor * 6, y: steeringX * -3, z: 0 }, true);
+          useTennisStore.getState().triggerP1Swing('smash');
+          setLastHitter('p1');
+          setMatchStatus('playing');
+          lastHitTime.current = t;
+          bouncesSinceHit.current = 0;
+          pointResolved.current = false;
+          isServeShot.current = true;
+          serveTouchedNet.current = false;
+          return;
+        }
 
-        ballBodyRef.current.setLinvel(shot, true);
-        ballBodyRef.current.setAngvel({ x: 10 + recorridoFactor * 6, y: steeringX * -3, z: 0 }, true);
-        setLastHitter('p1');
-        setMatchStatus('playing');
-        lastHitTime.current = t;
-        bouncesSinceHit.current = 0;
-        pointResolved.current = false;
-        isServeShot.current = true;
-        return;
-      }
+        // Missed toss reset
+        if (timeSinceToss > 1.6 && ballPos.y < 0.4) {
+          resetServe();
+          return;
+        }
+      } else {
+        // CPU automatically smashes serve down near toss apex
+        if (timeSinceToss > 0.62 && ballPos.y >= 2.4 && !isServeShot.current) {
+          // Deuce serve (CPU right / X < 0) -> aims to P1 Deuce box [0, 4.115] (center = +2.05m)
+          // Ad serve (CPU left / X > 0) -> aims to P1 Ad box [-4.115, 0] (center = -2.05m)
+          const baseTargetX = serveSide === 'deuce' ? 2.05 : -2.05;
+          const targetX = baseTargetX + (Math.random() - 0.5) * 1.3;
+          const targetZ = 3.2 + Math.random() * 2.2; // Inside P1 service box (0 to 6.4m)
 
-      // If toss is missed and ball hits ground, reset serve
-      if (timeSinceToss > 1.6 && ballPos.y < 0.4) {
-        resetServe();
-        return;
+          const cpuServeShot = calculateShotVelocity({
+            fromPos: [ballPos.x, ballPos.y, ballPos.z],
+            targetZ,
+            targetX,
+            steeringX: 0,
+            isServe: true,
+          });
+
+          ballBodyRef.current.setLinvel(cpuServeShot, true);
+          ballBodyRef.current.setAngvel({ x: -14, y: 0, z: 0 }, true);
+          useTennisStore.getState().triggerCpuSwing('smash');
+          setLastHitter('cpu');
+          setMatchStatus('playing');
+          lastHitTime.current = t;
+          bouncesSinceHit.current = 0;
+          pointResolved.current = false;
+          isServeShot.current = true;
+          serveTouchedNet.current = false;
+          return;
+        }
+
+        if (timeSinceToss > 1.6 && ballPos.y < 0.4) {
+          resetServe();
+          return;
+        }
       }
     }
 
     // =========================================================================
-    // 3. IN-PLAY RALLY: Player 1 Hits Ball (Forehand / Backhand)
+    // 3. IN-PLAY RALLY: Player 1 Hits Ball (Drive vs Revés)
     // =========================================================================
     if (matchStatus === 'playing') {
-      const distToP1 = Math.hypot(ballPos.x - p1[0], ballPos.z - p1[2]);
-      const isBallInFrontOfP1 = ballPos.z <= p1[2] + 0.8 && ballPos.z >= p1[2] - 2.4;
-      const canHit =
-        distToP1 <= 2.5 &&
-        isBallInFrontOfP1 &&
-        ballPos.y <= 2.2 &&
-        t - lastHitTime.current > 0.45;
+      const reach = evaluateHitReach(p1, [ballPos.x, ballPos.y, ballPos.z], false);
+      const shotType = reach.shotType; // 'drive' (derecha) o 'backhand' (revés)
 
-      if (isActionJustPressed && canHit) {
+      // When player presses SPACE, execute swing animation immediately
+      if (isActionJustPressed) {
+        p1SwingAttemptTime.current = t;
+        useTennisStore.getState().triggerP1Swing(shotType);
+      }
+
+      // ITF Rule 17: Returner must let serve bounce in service box before hitting!
+      const isReturnerVolleyingServe = isServeShot.current && bouncesSinceHit.current === 0;
+
+      // Ball is struck ONLY if the player actively pressed Space within swing window (0.35s)
+      const isSwingActive = t - p1SwingAttemptTime.current <= 0.35;
+      const shouldHit =
+        !isReturnerVolleyingServe &&
+        reach.canHit &&
+        isSwingActive &&
+        t - lastHitTime.current > 0.38;
+
+      if (shouldHit) {
+        // Consume the swing attempt so each Space press strikes once
+        p1SwingAttemptTime.current = 0;
+
         const steeringX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
+
         const shot = calculateShotVelocity({
           fromPos: [ballPos.x, ballPos.y, ballPos.z],
           targetZ: -9.5,
           steeringX,
           isServe: false,
+          shotType,
         });
 
         ballBodyRef.current.setLinvel(shot, true);
-        ballBodyRef.current.setAngvel({ x: 10, y: steeringX * -4, z: 0 }, true);
+        const spinX = shotType === 'drive' ? 12 : 7;
+        const spinY = steeringX * (shotType === 'drive' ? -5 : -2);
+        ballBodyRef.current.setAngvel({ x: spinX, y: spinY, z: 0 }, true);
+
         setLastHitter('p1');
         incrementRally();
         lastHitTime.current = t;
@@ -169,17 +253,22 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       }
 
       // =======================================================================
-      // 4. INTELLIGENT CPU OPPONENT RETURN:
+      // 4. INTELLIGENT CPU OPPONENT RETURN (Drive vs Revés):
       // =======================================================================
-      const cpuPos = useTennisStore.getState().cpuPos;
-      const distToCpu = Math.hypot(ballPos.x - cpuPos[0], ballPos.z - cpuPos[2]);
+      const isCpuVolleyingServe = isServeShot.current && bouncesSinceHit.current === 0;
+      const cpuReach = evaluateHitReach(cpuPos, [ballPos.x, ballPos.y, ballPos.z], true);
       const isApproachingCpu = ballPos.z < -6.0 && ballVel.z < 0;
 
-      if (isApproachingCpu && distToCpu < 2.8 && ballPos.y < 2.2 && t - lastHitTime.current > 0.55) {
-        // Smart placement: aim away from Player 1's position to test player agility
+      if (
+        !isCpuVolleyingServe &&
+        isApproachingCpu &&
+        cpuReach.canHit &&
+        t - lastHitTime.current > 0.52
+      ) {
+        const shotType = cpuReach.shotType;
         const p1X = useTennisStore.getState().p1Pos[0];
         const preferredSide = p1X < 0 ? 1 : -1;
-        const targetX = preferredSide * (1.8 + Math.random() * 2.0);
+        const targetX = preferredSide * (shotType === 'drive' ? (2.0 + Math.random() * 2.2) : (1.4 + Math.random() * 1.4));
 
         const cpuShot = calculateShotVelocity({
           fromPos: [ballPos.x, ballPos.y, ballPos.z],
@@ -187,11 +276,12 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           targetX,
           steeringX: 0,
           isServe: false,
+          shotType,
         });
 
         ballBodyRef.current.setLinvel(cpuShot, true);
-        ballBodyRef.current.setAngvel({ x: -8, y: preferredSide * 3, z: 0 }, true);
-        useTennisStore.getState().triggerCpuSwing();
+        ballBodyRef.current.setAngvel({ x: shotType === 'drive' ? -10 : -6, y: preferredSide * 3, z: 0 }, true);
+        useTennisStore.getState().triggerCpuSwing(shotType);
         setLastHitter('cpu');
         incrementRally();
         lastHitTime.current = t;
@@ -201,7 +291,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       }
 
       // =======================================================================
-      // 5. BOUNCE EVALUATION & TENNIS COURT BOUNDARIES (IN / OUT / FAULT)
+      // 5. BOUNCE EVALUATION & TENNIS COURT BOUNDARIES (IN / OUT / FAULT / LET)
       // =======================================================================
       const isGroundContact = ballPos.y <= 0.16 && ballVel.y <= 0.2;
       const isDebouncedBounce = t - lastBounceTime.current > 0.22;
@@ -213,9 +303,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
         const hitter = useTennisStore.getState().lastHitter;
 
-        // 5a. First Bounce Check (Line In / Out / Service Box)
+        // 5a. First Bounce Check (Line In / Out / Service Box / Let)
         if (bouncesSinceHit.current === 1 && !pointResolved.current && hitter) {
-          const serveSide = useTennisStore.getState().serveSide;
           const evaluation = evaluateBounce({
             x: ballPos.x,
             z: ballPos.z,
@@ -224,7 +313,12 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             hitter,
           });
 
-          if (evaluation.isFault) {
+          // Check Service Let (ITF Rule 22: touches net and lands in legal box)
+          if (isServeShot.current && serveTouchedNet.current && evaluation.isInBounds && !evaluation.isFault) {
+            pointResolved.current = true;
+            recordLet();
+            setTimeout(() => resetServe(), 1800);
+          } else if (evaluation.isFault) {
             pointResolved.current = true;
             recordFault();
             setTimeout(() => resetServe(), 1500);
@@ -233,13 +327,17 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             const winner = hitter === 'p1' ? 'cpu' : 'p1';
             awardPoint(winner);
             setTimeout(() => resetServe(), 1800);
+          } else if (isServeShot.current) {
+            // Serve landed legally in the target box!
+            serveLandedInBox.current = true;
           }
         }
 
-        // 5b. Second Bounce Check (Double Bounce -> Hitter wins point)
+        // 5b. Second Bounce Check (Double Bounce -> Hitter wins point; If untouched serve -> ACE!)
         if (bouncesSinceHit.current >= 2 && !pointResolved.current && hitter) {
           pointResolved.current = true;
-          awardPoint(hitter);
+          const isAce = isServeShot.current && serveLandedInBox.current;
+          awardPoint(hitter, isAce);
           setTimeout(() => resetServe(), 1800);
         }
       }
@@ -253,8 +351,16 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       ) {
         pointResolved.current = true;
         const hitter = useTennisStore.getState().lastHitter || 'p1';
-        const winner = hitter === 'p1' ? 'cpu' : 'p1';
-        awardPoint(winner);
+        if (bouncesSinceHit.current >= 1) {
+          // Ball bounced legally in opponent's court, then escaped off-court without return:
+          // Hitter wins point! If it was an untouched serve -> ACE!
+          const isAce = isServeShot.current && serveLandedInBox.current;
+          awardPoint(hitter, isAce);
+        } else {
+          // Ball flew out directly without bouncing in-bounds: Opponent wins point
+          const winner = hitter === 'p1' ? 'cpu' : 'p1';
+          awardPoint(winner);
+        }
         setTimeout(() => resetServe(), 1500);
       }
     }

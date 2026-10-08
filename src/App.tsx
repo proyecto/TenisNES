@@ -8,6 +8,10 @@ export const App: React.FC = () => {
     p2Points,
     p1Games,
     p2Games,
+    p1Sets,
+    p2Sets,
+    p1Aces,
+    p2Aces,
     rallyCount,
     matchStatus,
     server,
@@ -44,32 +48,55 @@ export const App: React.FC = () => {
   };
 
   const getStatusMessage = () => {
+    const isP1Serving = server === 'p1';
     switch (matchStatus) {
       case 'serve_prep':
         const targetSide = serveSide === 'deuce' ? 'CUADRO IZQUIERDO' : 'CUADRO DERECHO';
         const currentSideName = serveSide === 'deuce' ? 'DERECHA (Deuce)' : 'IZQUIERDA (Ventaja)';
-        return {
-          badge: faultCount === 1 ? '2º SERVICIO' : '1º SERVICIO',
-          color: faultCount === 1 ? '#f59e0b' : '#ccff00',
-          text: `Saque: ${currentSideName} ➔ Objetivo: ${targetSide} • Muévete detrás de la línea y pulsa [ESPACIO]`,
-        };
+        if (isP1Serving) {
+          return {
+            badge: faultCount === 1 ? '2º SERVICIO P1' : '1º SERVICIO P1',
+            color: faultCount === 1 ? '#f59e0b' : '#ccff00',
+            text: `Saque: ${currentSideName} ➔ Objetivo: ${targetSide} • Pulsa [ESPACIO] para lanzar y rematar de Smash`,
+          };
+        } else {
+          return {
+            badge: faultCount === 1 ? 'RESTO (2º SAQUE CPU)' : 'RESTO (1º SAQUE CPU)',
+            color: '#38bdf8',
+            text: `Al Resto: CPU saca desde ${currentSideName} • Prepárate para restar tras el bote legal`,
+          };
+        }
       case 'serving':
-        return {
-          badge: '¡GOLPEA EL SAQUE!',
-          color: '#ffea00',
-          text: 'Golpea en el punto más alto para saque profundo (lejos) o antes para saque corto (cerca) • [ESPACIO]',
-        };
+        if (isP1Serving) {
+          return {
+            badge: '¡SMASH DE SAQUE!',
+            color: '#ffea00',
+            text: 'Smash de saque: pulsa [ESPACIO] con la raqueta arriba para rematar de arriba abajo • Dirige con A/D',
+          };
+        } else {
+          return {
+            badge: 'SAQUE CPU EN VUELO',
+            color: '#ffea00',
+            text: '¡Deja botar la pelota en tu cuadro antes de golpear! (Regla ITF 17: No se permite volea de saque)',
+          };
+        }
       case 'playing':
         return {
           badge: 'EN JUEGO',
           color: '#00e5ff',
-          text: 'Acércate a la bola y pulsa [ESPACIO] para golpear • Usa A/D para dirigir',
+          text: 'Drive a 1 mano por la derecha (fuerte y abierto) • Revés a 2 manos por la izquierda • Pulsa [ESPACIO]',
         };
       case 'point_over':
         return {
           badge: 'PUNTO FINALIZADO',
           color: '#f43f5e',
           text: 'Preparando siguiente punto...',
+        };
+      case 'game_over':
+        return {
+          badge: 'PARTIDO FINALIZADO',
+          color: '#fbbf24',
+          text: '¡Fin del partido!',
         };
       default:
         return {
@@ -138,6 +165,25 @@ export const App: React.FC = () => {
           )}
         </div>
 
+        {/* Scoreboard Column Headers */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 12,
+            fontSize: 9,
+            fontWeight: 800,
+            color: '#64748b',
+            letterSpacing: 1,
+            paddingRight: 6,
+            marginBottom: 2,
+          }}
+        >
+          <span style={{ width: 28, textAlign: 'center' }}>SETS</span>
+          <span style={{ width: 28, textAlign: 'center' }}>JUEGOS</span>
+          <span style={{ width: 34, textAlign: 'center' }}>PUNTOS</span>
+        </div>
+
         {/* Player 1 Row */}
         <div
           style={{
@@ -153,23 +199,41 @@ export const App: React.FC = () => {
             {server === 'p1' && <span style={{ fontSize: 11, color: '#ccff00' }}>●</span>}
           </div>
           <div style={{ display: 'flex', gap: 6, fontFamily: 'Teko, sans-serif', fontSize: 20 }}>
+            {/* Sets */}
+            <span
+              style={{
+                background: 'rgba(245, 158, 11, 0.22)',
+                color: '#fbbf24',
+                padding: '0 8px',
+                borderRadius: 4,
+                minWidth: 28,
+                textAlign: 'center',
+                fontWeight: 700,
+              }}
+            >
+              {p1Sets}
+            </span>
+            {/* Games */}
             <span
               style={{
                 background: 'rgba(0, 180, 216, 0.2)',
                 color: '#00e5ff',
                 padding: '0 8px',
                 borderRadius: 4,
+                minWidth: 28,
+                textAlign: 'center',
               }}
             >
               {p1Games}
             </span>
+            {/* Points */}
             <span
               style={{
                 background: 'rgba(204, 255, 0, 0.2)',
                 color: '#ccff00',
                 padding: '0 8px',
                 borderRadius: 4,
-                minWidth: 28,
+                minWidth: 34,
                 textAlign: 'center',
               }}
             >
@@ -193,23 +257,41 @@ export const App: React.FC = () => {
             {server === 'cpu' && <span style={{ fontSize: 11, color: '#ccff00' }}>●</span>}
           </div>
           <div style={{ display: 'flex', gap: 6, fontFamily: 'Teko, sans-serif', fontSize: 20 }}>
+            {/* Sets */}
+            <span
+              style={{
+                background: 'rgba(245, 158, 11, 0.22)',
+                color: '#fbbf24',
+                padding: '0 8px',
+                borderRadius: 4,
+                minWidth: 28,
+                textAlign: 'center',
+                fontWeight: 700,
+              }}
+            >
+              {p2Sets}
+            </span>
+            {/* Games */}
             <span
               style={{
                 background: 'rgba(0, 180, 216, 0.2)',
                 color: '#00e5ff',
                 padding: '0 8px',
                 borderRadius: 4,
+                minWidth: 28,
+                textAlign: 'center',
               }}
             >
               {p2Games}
             </span>
+            {/* Points */}
             <span
               style={{
                 background: 'rgba(204, 255, 0, 0.2)',
                 color: '#ccff00',
                 padding: '0 8px',
                 borderRadius: 4,
-                minWidth: 28,
+                minWidth: 34,
                 textAlign: 'center',
               }}
             >
@@ -218,7 +300,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Rally & Service Side indicator */}
+        {/* Rally, Aces & Service Side indicator */}
         <div
           style={{
             fontSize: 10,
@@ -226,6 +308,7 @@ export const App: React.FC = () => {
             fontWeight: 700,
             display: 'flex',
             justifyContent: 'space-between',
+            alignItems: 'center',
             borderTop: '1px solid rgba(255, 255, 255, 0.08)',
             paddingTop: 6,
           }}
@@ -233,8 +316,11 @@ export const App: React.FC = () => {
           <span>
             SAQUE:{' '}
             <span style={{ color: '#ccff00' }}>
-              {serveSide === 'deuce' ? 'DEUCE (DCH ➔ IZQ)' : 'VENTAJA (IZQ ➔ DCH)'}
+              {serveSide === 'deuce' ? 'DEUCE' : 'VENTAJA'}
             </span>
+          </span>
+          <span style={{ color: '#94a3b8' }}>
+            ACES: <span style={{ color: '#fbbf24', fontWeight: 800 }}>{p1Aces}</span> - <span style={{ color: '#fbbf24', fontWeight: 800 }}>{p2Aces}</span>
           </span>
           <span>
             PELOTEO: <span style={{ color: '#00e5ff', fontWeight: 800 }}>{rallyCount}</span>

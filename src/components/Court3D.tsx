@@ -12,6 +12,7 @@ import { useTennisStore } from '../store/useTennisStore';
  */
 export const Court3D: React.FC = () => {
   const matchStatus = useTennisStore((state) => state.matchStatus);
+  const server = useTennisStore((state) => state.server);
   const serveSide = useTennisStore((state) => state.serveSide);
 
   // Generate alternating lawn mower stripes
@@ -20,10 +21,18 @@ export const Court3D: React.FC = () => {
 
   const isServingMode = matchStatus === 'serve_prep' || matchStatus === 'serving';
 
-  // Server section indicator coordinates (outside baseline Z > 11.89m)
-  const serverBoxX = serveSide === 'deuce' ? 2.15 : -2.15;
-  // Target diagonal service box coordinates (CPU side Z in [-6.40, 0])
-  const targetBoxX = serveSide === 'deuce' ? -2.057 : 2.057;
+  // Server section indicator coordinates
+  const isP1Server = server === 'p1';
+  const serverBoxX = isP1Server
+    ? (serveSide === 'deuce' ? 2.15 : -2.15)
+    : (serveSide === 'deuce' ? -2.15 : 2.15);
+  const serverBoxZ = isP1Server ? 13.2 : -13.2;
+
+  // Target diagonal service box coordinates
+  const targetBoxX = isP1Server
+    ? (serveSide === 'deuce' ? -2.057 : 2.057)
+    : (serveSide === 'deuce' ? 2.057 : -2.057);
+  const targetBoxZ = isP1Server ? -3.2 : 3.2;
 
   return (
     <group>
@@ -116,7 +125,7 @@ export const Court3D: React.FC = () => {
       {isServingMode && (
         <group position={[0, 0.018, 0]}>
           {/* Active Server Legal Zone (Behind Baseline, Strictly in Active Section) */}
-          <group position={[serverBoxX, 0, 13.2]}>
+          <group position={[serverBoxX, 0, serverBoxZ]}>
             {/* Soft illuminated fill */}
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
               <planeGeometry args={[3.85, 2.4]} />
@@ -142,7 +151,7 @@ export const Court3D: React.FC = () => {
           </group>
 
           {/* Diagonally Opposite Target Service Box (Must land inside this box) */}
-          <group position={[targetBoxX, 0, -3.2]}>
+          <group position={[targetBoxX, 0, targetBoxZ]}>
             {/* Glowing target fill */}
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
               <planeGeometry args={[4.115, 6.4]} />

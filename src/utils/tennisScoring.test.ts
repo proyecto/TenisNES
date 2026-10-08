@@ -129,4 +129,62 @@ describe('tennisScoring', () => {
     expect(res.p2Points).toBe(3);
     expect(res.announcement).toContain('IGUALES');
   });
+
+  it('correctly evaluates legal CPU serves into P1 diagonal service boxes', () => {
+    // CPU serves from deuce (X < 0) into P1 deuce box [0, 4.115], Z in [0, 6.4]
+    const deuceResult = evaluateBounce({
+      x: 2.0,
+      z: 4.5,
+      isServe: true,
+      serveSide: 'deuce',
+      hitter: 'cpu',
+    });
+    expect(deuceResult.isInBounds).toBe(true);
+    expect(deuceResult.isFault).toBe(false);
+
+    // CPU serves from ad (X > 0) into P1 ad box [-4.115, 0], Z in [0, 6.4]
+    const adResult = evaluateBounce({
+      x: -2.0,
+      z: 4.5,
+      isServe: true,
+      serveSide: 'ad',
+      hitter: 'cpu',
+    });
+    expect(adResult.isInBounds).toBe(true);
+    expect(adResult.isFault).toBe(false);
+  });
+
+  it('flags fault when CPU serve misses P1 service box', () => {
+    // Lands on CPU side or past service line (Z > 6.4)
+    const longServe = evaluateBounce({
+      x: 2.0,
+      z: 8.5,
+      isServe: true,
+      serveSide: 'deuce',
+      hitter: 'cpu',
+    });
+    expect(longServe.isInBounds).toBe(false);
+    expect(longServe.isFault).toBe(true);
+  });
+
+  it('progresses to set win and server alternation upon 6 games won with 2 margin', () => {
+    let state = {
+      p1Points: 3,
+      p2Points: 0,
+      p1Games: 5,
+      p2Games: 2,
+      p1Sets: 0,
+      p2Sets: 0,
+      server: 'p1' as const,
+    };
+
+    const res = calculatePointProgression(state, 'p1');
+    expect(res.gameWon).toBe('p1');
+    expect(res.setWon).toBe('p1');
+    expect(res.p1Sets).toBe(1);
+    expect(res.p1Games).toBe(0);
+    expect(res.p2Games).toBe(0);
+    expect(res.nextServer).toBe('cpu');
+    expect(res.announcement).toContain('SET PARA EL JUGADOR 1');
+  });
 });
