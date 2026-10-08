@@ -87,14 +87,28 @@ export function calculateShotVelocity({
 
   if (isServe || shotType === 'smash') {
     // 1. Tennis serve / smash: analytic trajectory connecting (x0, y0, z0)
-    // to (targetX, yLand = 0.08, targetZ) with guaranteed net clearance.
+    // to (targetX, yLand = 0.08, targetZ)
     const dzTotal = targetZ - z0;
     const absDzTotal = Math.abs(dzTotal);
 
     const distToNet = Math.abs(z0 - NET_Z);
     const alpha = Math.max(0.15, Math.min(0.92, distToNet / Math.max(1.0, absDzTotal)));
 
-    const yNetTarget = 1.45;
+    // Net clearance depends on strike height y0 and depth steering:
+    // - High overhead strike (y0 >= 2.35m): clears comfortably (1.15m - 1.35m)
+    // - Late toss strike (y0 < 2.15m): launch angle is too flat/downward, crashes into the net (0.75m - 0.88m)!
+    // - Forward push (steeringZ > 0): flatter cannon trajectory, tight margin over tape
+    let yNetTarget = 1.25;
+    if (y0 < 2.15) {
+      // Late strike on falling toss: crashes into the net!
+      yNetTarget = 0.78 + (y0 - 1.6) * 0.25;
+    } else if (steeringZ > 0) {
+      // Aggressive flat drive serve: tight margin
+      yNetTarget = y0 < 2.4 ? 0.88 : 1.10;
+    } else {
+      yNetTarget = 1.22 + (y0 - 2.2) * 0.25;
+    }
+
     const yLand = 0.08;
 
     const num = yNetTarget - (1 - alpha) * y0 - alpha * yLand;
@@ -123,30 +137,52 @@ export function calculateShotVelocity({
   // 2. Regular rally shots: DRIVE (Right hand) vs BACKHAND (Revés / Left side)
   const isDrive = shotType === 'drive';
 
-  // Base speed & depth modulated by steeringZ:
-  // - Right hand Forehand (Drive): visibly more speed, power and offensive whip
-  // - Left side Backhand (Revés): noticeably softer, controlled and defensive pace
   let speedZ = isDrive ? 18.0 : 14.0;
   let effectiveTargetZ = targetZ;
-  let clearance = isDrive ? 1.45 : 1.55;
+
+  // Realistic Net Clearance depending on contact height y0 and shot type:
+  // Net height is 0.914m at center and 1.07m at posts.
+  // - Waist/Chest height (y0 >= 0.85m): normal clearance (1.25m - 1.45m)
+  // - Low contact (y0 < 0.65m):
+  //   * If hitting with forward power (steeringZ > 0): cannot lift in time, hits the net (0.80m - 0.88m)!
+  //   * If neutral: tight clearance (1.05m)
+  // - Drop shot from deep baseline (|z0| > 12.0m && steeringZ < 0): falls into the net!
+  let clearance = isDrive ? 1.30 : 1.38;
 
   if (steeringZ > 0) {
-    // Adelante: Tiro potente y profundo
+    // Adelante: Tiro tenso, potente y plano
     speedZ = isDrive ? 22.0 : 17.0;
     effectiveTargetZ = isMovingForward ? -10.8 : 10.8;
-    clearance = isDrive ? 1.35 : 1.45;
+    if (y0 < 0.65) {
+      // Hitting a very low ball flat forward: crashes into the net!
+      clearance = 0.82;
+    } else {
+      clearance = 1.12;
+    }
   } else if (steeringZ < 0) {
-    // Atrás: Dejada floja cerca de la red
+    // Atrás: Dejada corta
     speedZ = isDrive ? 11.5 : 9.5;
     effectiveTargetZ = isMovingForward ? -3.2 : 3.2;
-    clearance = 1.40;
+    if (Math.abs(z0) > 12.0) {
+      // Drop shot attempted from too deep: dies in the net!
+      clearance = 0.84;
+    } else {
+      clearance = 1.25;
+    }
+  } else {
+    // Neutral shot:
+    if (y0 < 0.50) {
+      clearance = 0.86;
+    } else {
+      clearance = isDrive ? 1.30 : 1.38;
+    }
   }
 
   const vz = isMovingForward ? -speedZ : speedZ;
   const timeToNet = Math.abs(z0 - NET_Z) / speedZ;
   const totalFlightTime = Math.abs(z0 - effectiveTargetZ) / speedZ;
 
-  // 1. Calculate minimum vy to guarantee athletic net clearance (at least 40-50cm above the 0.914m net)
+  // 1. Calculate required vy for the chosen clearance
   const requiredVyForNet =
     (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / Math.max(0.1, timeToNet);
 
@@ -155,9 +191,14 @@ export function calculateShotVelocity({
   const requiredVyForLanding =
     (yGround - y0 + 0.5 * GRAVITY * totalFlightTime * totalFlightTime) / Math.max(0.1, totalFlightTime);
 
-  // Blend constraints to produce an authentic topspin arc with plenty of height and downward plunge
-  const baseMinVy = steeringZ < 0 ? 3.4 : (isDrive ? 4.5 : 4.8);
-  const vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
+  // When clearance < 0.914m (net fault intended), do not override with landing vy!
+  let vy: number;
+  if (clearance < 0.914) {
+    vy = requiredVyForNet;
+  } else {
+    const baseMinVy = steeringZ < 0 ? 3.0 : (isDrive ? 3.8 : 4.2);
+    vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
+  }
 
   // Lateral steering:
   // Forehand (Drive) generates sharper cross-court angles (3.6) vs Backhand (2.0)

@@ -83,9 +83,41 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     useTennisStore.getState().ballPos = [ballPos.x, ballPos.y, ballPos.z];
     useTennisStore.getState().ballVel = [ballVel.x, ballVel.y, ballVel.z];
 
-    // Net contact detection for serve
-    if (isServeShot.current && Math.abs(ballPos.z) < 0.22 && ballPos.y <= 1.05) {
-      serveTouchedNet.current = true;
+    // =========================================================================
+    // PHYSICAL TENNIS NET COLLISION & DEFLECTION
+    // Center net height is 0.914m; post height is 1.07m
+    // =========================================================================
+    const netHeightAtX = 0.914 + Math.min(1.0, Math.pow(Math.abs(ballPos.x) / 5.5, 2)) * 0.156;
+    const isCrossingNetPlane = Math.abs(ballPos.z) <= 0.28;
+    const isBelowNetTape = ballPos.y <= netHeightAtX + 0.04;
+
+    if (isCrossingNetPlane && isBelowNetTape && !pointResolved.current) {
+      const currentV = ballBodyRef.current.linvel();
+      const isMovingTowardsNet =
+        (ballPos.z > 0 && currentV.z < 0) || (ballPos.z < 0 && currentV.z > 0);
+
+      if (isMovingTowardsNet) {
+        // A. Net Tape Cord Graze (top 8cm of the tape): Lucky deflection / let
+        if (ballPos.y >= netHeightAtX - 0.06) {
+          serveTouchedNet.current = true;
+          // Retain slight forward momentum, tumble over the tape
+          ballBodyRef.current.setLinvel(
+            { x: currentV.x * 0.65, y: Math.max(1.2, Math.abs(currentV.y) * 0.4), z: currentV.z * 0.42 },
+            true
+          );
+          ballBodyRef.current.setAngvel({ x: (currentV.z < 0 ? -1 : 1) * 20, y: 0, z: 0 }, true);
+          onBounce?.();
+        } else {
+          // B. Solid Impact into Net Mesh (below tape): Rebounds and drops on hitter's side
+          const reboundDir = ballPos.z > 0 ? 1 : -1;
+          ballBodyRef.current.setLinvel(
+            { x: currentV.x * 0.15, y: -0.6, z: reboundDir * 1.8 },
+            true
+          );
+          ballBodyRef.current.setAngvel({ x: reboundDir * 12, y: 0, z: 0 }, true);
+          onBounce?.();
+        }
+      }
     }
 
     // =========================================================================
@@ -618,6 +650,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       <RigidBody
         ref={ballBodyRef}
         colliders="ball"
+        ccd
         restitution={0.82}
         friction={0.65}
         linearDamping={0.02}

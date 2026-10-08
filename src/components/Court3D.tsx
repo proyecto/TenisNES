@@ -185,10 +185,10 @@ export const Court3D: React.FC = () => {
       </mesh>
 
       {/* 4. Tennis Net with Physics Collider */}
-      <RigidBody type="fixed" friction={0.3} restitution={0.2}>
-        {/* Net mesh body */}
+      <RigidBody type="fixed" friction={0.8} restitution={0.15}>
+        {/* Net mesh body with solid 16cm physical collision depth */}
         <mesh position={[0, 0.48, 0]} castShadow receiveShadow>
-          <boxGeometry args={[11.4, 0.96, 0.03]} />
+          <boxGeometry args={[11.5, 0.96, 0.16]} />
           <meshStandardMaterial
             color="#111827"
             roughness={0.9}
@@ -197,9 +197,9 @@ export const Court3D: React.FC = () => {
           />
         </mesh>
 
-        {/* Top white tape band */}
+        {/* Top white tape band with tense cord deflection volume */}
         <mesh position={[0, 0.97, 0]} castShadow>
-          <boxGeometry args={[11.4, 0.06, 0.05]} />
+          <boxGeometry args={[11.5, 0.08, 0.18]} />
           <meshStandardMaterial color="#ffffff" roughness={0.3} />
         </mesh>
 
