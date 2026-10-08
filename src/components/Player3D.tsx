@@ -179,7 +179,8 @@ export const Player3D: React.FC<Player3DProps> = ({
         swingProgress.current = 1.0;
       } else if (keys.current.action && !isSwinging.current && matchStatus !== 'serve_prep') {
         const ball = useTennisStore.getState().ballPos;
-        const isRight = ball[0] >= currentPos.current.x - 0.1;
+        // Strictly right-hand side (dx >= 0) is drive; strictly left-hand side (dx < 0) is backhand
+        const isRight = ball[0] >= currentPos.current.x;
         currentShotType.current = matchStatus === 'serving' ? 'smash' : isRight ? 'drive' : 'backhand';
         isSwinging.current = true;
         swingProgress.current = 1.0;
@@ -302,7 +303,13 @@ export const Player3D: React.FC<Player3DProps> = ({
     let targetFacing = isOpponent ? 0 : Math.PI;
 
     if (isSwinging.current) {
-      targetFacing = isOpponent ? 0.18 : Math.PI - 0.18;
+      const isBackhand = currentShotType.current === 'backhand';
+      const isDrive = currentShotType.current === 'drive';
+      if (isOpponent) {
+        targetFacing = isBackhand ? 0.28 : isDrive ? -0.28 : 0;
+      } else {
+        targetFacing = isBackhand ? Math.PI + 0.28 : isDrive ? Math.PI - 0.28 : Math.PI;
+      }
     } else if (isRunning) {
       targetFacing = Math.atan2(velocity.current.x, velocity.current.z);
     } else {
@@ -436,11 +443,11 @@ export const Player3D: React.FC<Player3DProps> = ({
             torsoGroupRef.current.rotation.set(MathUtils.lerp(0.12, -0.28, p), 0.15, 0);
 
             // Right arm points straight UP into the sky (overhead, one hand)
-            rightArmRef.current.position.set(0.25, 0.38 + p * 0.12, 0);
+            rightArmRef.current.position.set(-0.25, 0.38 + p * 0.12, 0);
             rightArmRef.current.rotation.set(
               MathUtils.lerp(-1.75, -2.95, p), // Straight UP into the sky!
-              MathUtils.lerp(0.48, 0.05, p),
-              MathUtils.lerp(-0.68, -0.05, p)
+              MathUtils.lerp(-0.48, -0.05, p),
+              MathUtils.lerp(0.68, 0.05, p)
             );
             // Racket extends vertically high above cranium
             racketGroupRef.current.rotation.set(
@@ -448,253 +455,256 @@ export const Player3D: React.FC<Player3DProps> = ({
               0,
               0
             );
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
+            leftArmRef.current.position.set(0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
               MathUtils.lerp(-2.75, -1.2, p),
-              -0.12,
-              0.15
+              0.12,
+              -0.15
             );
           } else if (strokePhase < 0.68) {
             // Violent overhead hammer strike downward
             const p = (strokePhase - 0.32) / 0.36;
             torsoGroupRef.current.rotation.set(MathUtils.lerp(-0.28, 0.52, p), 0.05, 0);
 
-            rightArmRef.current.position.set(0.25, 0.50 - p * 0.12, 0);
+            rightArmRef.current.position.set(-0.25, 0.50 - p * 0.12, 0);
             rightArmRef.current.rotation.set(
               MathUtils.lerp(-2.95, 1.25, p),
-              MathUtils.lerp(0.05, -0.32, p),
-              MathUtils.lerp(-0.05, 0.22, p)
+              MathUtils.lerp(-0.05, 0.32, p),
+              MathUtils.lerp(0.05, -0.22, p)
             );
             racketGroupRef.current.rotation.set(
               MathUtils.lerp(0.1, 1.75, p),
-              0.12,
-              -0.25
+              -0.12,
+              0.25
             );
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
+            leftArmRef.current.position.set(0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
               MathUtils.lerp(-1.2, -0.35, p),
-              -0.25,
-              0.28
+              0.25,
+              -0.28
             );
           } else {
             // Follow-through across left hip & recover
             const p = (strokePhase - 0.68) / 0.32;
             torsoGroupRef.current.rotation.set(MathUtils.lerp(0.52, 0.15, p), 0, 0);
 
-            rightArmRef.current.position.set(0.25, 0.38, 0);
+            rightArmRef.current.position.set(-0.25, 0.38, 0);
             rightArmRef.current.rotation.set(
               MathUtils.lerp(1.25, -0.62, p),
-              MathUtils.lerp(-0.32, 0.26, p),
-              MathUtils.lerp(0.22, -0.2, p)
+              MathUtils.lerp(0.32, -0.26, p),
+              MathUtils.lerp(-0.22, 0.2, p)
             );
             racketGroupRef.current.rotation.set(
               MathUtils.lerp(1.75, 0.55, p),
-              0.18,
-              -0.25
+              -0.18,
+              0.25
             );
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
+            leftArmRef.current.position.set(0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
               MathUtils.lerp(-0.35, -0.68, p),
-              -0.28,
-              0.28
+              0.28,
+              -0.28
             );
           }
         } else if (isBackhand) {
           // ===================================================================
-          // 2. REVÉS: A DOS MANOS, Y LLEGA MÁS CORTO
-          // "El otro va a dos manos, y llega mas corto"
+          // 2. REVÉS: A DOS MANOS (CORTO, COMPACTO, AMBAS MANOS EN EL MANGO)
+          // "Si pasa por su izquierda... de revés, como si la está agarrando con
+          //  las dos manos... un golpe más corto, porque lo da con las dos manos."
           // ===================================================================
-          if (strokePhase < 0.34) {
-            // Carga a dos manos a la izquierda (cerrado, compacto)
-            const p = strokePhase / 0.34;
-            const twist = MathUtils.lerp(0, -0.92, p) * (isOpponent ? -1 : 1);
+          if (strokePhase < 0.32) {
+            // Fase 1: Carga cerrada a dos manos hacia la izquierda (X local positivo)
+            const p = strokePhase / 0.32;
+            const twist = MathUtils.lerp(0, 1.15, p) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = twist;
 
-            // Ambos brazos se acercan al centro y sostienen el mango juntos
+            // AMBAS MANOS CONVERGEN JUNTAS EN EL MANGO EN EL LADO IZQUIERDO DEL CUERPO
             rightArmRef.current.position.set(
-              MathUtils.lerp(0.25, 0.16, p),
-              MathUtils.lerp(0.38, 0.34, p),
-              MathUtils.lerp(0, 0.08, p)
+              MathUtils.lerp(-0.25, -0.06, p),
+              MathUtils.lerp(0.38, 0.30, p),
+              MathUtils.lerp(0, 0.18, p)
             );
             leftArmRef.current.position.set(
-              MathUtils.lerp(-0.25, -0.12, p),
-              MathUtils.lerp(0.38, 0.36, p),
-              MathUtils.lerp(0, 0.08, p)
+              MathUtils.lerp(0.25, 0.08, p),
+              MathUtils.lerp(0.38, 0.32, p),
+              MathUtils.lerp(0, 0.20, p)
+            );
+
+            // Codos flexionados, ambas manos unidas al mango en el costado izquierdo
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.62, -0.92, p),
+              MathUtils.lerp(-0.26, 0.85, p),
+              MathUtils.lerp(0.2, -0.72, p)
+            );
+            leftArmRef.current.rotation.set(
+              MathUtils.lerp(-0.68, -0.98, p),
+              MathUtils.lerp(0.28, 0.78, p),
+              MathUtils.lerp(-0.28, -0.65, p)
+            );
+            racketGroupRef.current.rotation.set(
+              MathUtils.lerp(0.55, 0.35, p),
+              MathUtils.lerp(-0.18, 1.05, p),
+              MathUtils.lerp(0.25, -0.72, p)
+            );
+          } else if (strokePhase < 0.68) {
+            // Fase 2: Impacto coordinado a dos manos (recorrido corto y compacto)
+            const p = (strokePhase - 0.32) / 0.36;
+            const twist = MathUtils.lerp(1.15, -0.68, p) * (isOpponent ? -1 : 1);
+            torsoGroupRef.current.rotation.y = twist;
+
+            // AMBAS MANOS CONTINÚAN PEGADAS AL MANGO IMPULSANDO LA RAQUETA
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.06, -0.08, p),
+              MathUtils.lerp(0.30, 0.34, p),
+              MathUtils.lerp(0.18, 0.24, p)
+            );
+            leftArmRef.current.position.set(
+              MathUtils.lerp(0.08, 0.04, p),
+              MathUtils.lerp(0.32, 0.36, p),
+              MathUtils.lerp(0.20, 0.26, p)
             );
 
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.62, -0.72, p),
-              MathUtils.lerp(0.26, -0.65, p),
-              MathUtils.lerp(-0.2, 0.55, p)
+              MathUtils.lerp(-0.92, 0.82, p),
+              MathUtils.lerp(0.85, -0.55, p),
+              MathUtils.lerp(-0.72, 0.45, p)
             );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.68, -0.78, p),
-              MathUtils.lerp(-0.28, -0.58, p),
-              MathUtils.lerp(0.28, 0.48, p)
+              MathUtils.lerp(-0.98, 0.75, p),
+              MathUtils.lerp(0.78, -0.62, p),
+              MathUtils.lerp(-0.65, 0.38, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.55, 0.32, p),
-              MathUtils.lerp(0.18, -0.85, p),
-              MathUtils.lerp(-0.25, 0.58, p)
-            );
-          } else if (strokePhase < 0.7) {
-            // Golpeo coordinado a dos manos a la izquierda
-            const p = (strokePhase - 0.34) / 0.36;
-            const twist = MathUtils.lerp(-0.92, 0.58, p) * (isOpponent ? -1 : 1);
-            torsoGroupRef.current.rotation.y = twist;
-
-            rightArmRef.current.position.set(
-              MathUtils.lerp(0.16, 0.18, p),
-              MathUtils.lerp(0.34, 0.35, p),
-              MathUtils.lerp(0.08, 0.06, p)
-            );
-            leftArmRef.current.position.set(
-              MathUtils.lerp(-0.12, -0.10, p),
-              MathUtils.lerp(0.36, 0.37, p),
-              MathUtils.lerp(0.08, 0.06, p)
-            );
-
-            rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.72, 0.72, p),
-              MathUtils.lerp(-0.65, 0.45, p),
-              MathUtils.lerp(0.55, -0.32, p)
-            );
-            leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.78, 0.65, p),
-              MathUtils.lerp(-0.58, 0.52, p),
-              MathUtils.lerp(0.48, -0.25, p)
-            );
-            racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.32, 0.72, p),
-              MathUtils.lerp(-0.85, 0.42, p),
-              MathUtils.lerp(0.58, -0.28, p)
+              MathUtils.lerp(0.35, 0.82, p),
+              MathUtils.lerp(1.05, -0.52, p),
+              MathUtils.lerp(-0.72, 0.35, p)
             );
           } else {
-            // Terminación a dos manos sobre hombro derecho
-            const p = (strokePhase - 0.7) / 0.3;
-            const twist = MathUtils.lerp(0.58, 0, p) * (isOpponent ? -1 : 1);
+            // Fase 3: Terminación a dos manos envolviendo sobre el hombro derecho
+            const p = (strokePhase - 0.68) / 0.32;
+            const twist = MathUtils.lerp(-0.68, 0, p) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = twist;
 
+            // AMBAS MANOS SUBEN JUNTAS AL HOMBRO DERECHO ANTES DE SEPARARSE
             rightArmRef.current.position.set(
-              MathUtils.lerp(0.18, 0.25, p),
-              MathUtils.lerp(0.35, 0.38, p),
-              MathUtils.lerp(0.06, 0, p)
+              MathUtils.lerp(-0.08, -0.25, p),
+              MathUtils.lerp(0.34, 0.38, p),
+              MathUtils.lerp(0.24, 0, p)
             );
             leftArmRef.current.position.set(
-              MathUtils.lerp(-0.10, -0.25, p),
-              MathUtils.lerp(0.37, 0.38, p),
-              MathUtils.lerp(0.06, 0, p)
+              MathUtils.lerp(0.04, 0.25, p),
+              MathUtils.lerp(0.36, 0.38, p),
+              MathUtils.lerp(0.26, 0, p)
             );
 
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(0.72, -0.62, p),
-              MathUtils.lerp(0.45, 0.26, p),
-              MathUtils.lerp(-0.32, -0.2, p)
+              MathUtils.lerp(0.82, -0.62, p),
+              MathUtils.lerp(-0.55, -0.26, p),
+              MathUtils.lerp(0.45, 0.2, p)
             );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(0.65, -0.68, p),
-              MathUtils.lerp(0.52, -0.28, p),
-              MathUtils.lerp(-0.25, 0.28, p)
+              MathUtils.lerp(0.75, -0.68, p),
+              MathUtils.lerp(-0.62, 0.28, p),
+              MathUtils.lerp(0.38, -0.28, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.72, 0.55, p),
-              MathUtils.lerp(0.42, 0.18, p),
-              MathUtils.lerp(-0.28, -0.25, p)
+              MathUtils.lerp(0.82, 0.55, p),
+              MathUtils.lerp(-0.52, -0.18, p),
+              MathUtils.lerp(0.35, 0.25, p)
             );
           }
         } else {
           // ===================================================================
-          // 3. DRIVE: A UNA MANO, A LA DERECHA, Y LLEGA MÁS LEJOS
-          // "Uno, el drive, va a una mano, a la derecha, y llega mas lejos."
+          // 3. DRIVE: A UNA MANO, A LA DERECHA, Y LLEGA MÁS LEJOS (ALCANCE AMPLIO)
+          // "Si pasa por la derecha... golpe a una mano claramente... más alcance"
           // ===================================================================
           if (strokePhase < 0.28) {
-            // Apertura amplia a la derecha (gran alcance lateral)
+            // Fase 1: Apertura amplia a una mano hacia la derecha (X local negativo)
             const prepP = strokePhase / 0.28;
-            const torsoTwist = MathUtils.lerp(0, 0.88, prepP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(0, -0.95, prepP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
-            // Brazo derecho extendido hacia afuera a la derecha
+            // BRAZO DERECHO EXTENDIDO BIEN LEJOS A LA DERECHA (X local llega a -0.65m!)
             rightArmRef.current.position.set(
-              MathUtils.lerp(0.25, 0.42, prepP),
-              MathUtils.lerp(0.38, 0.34, prepP),
-              MathUtils.lerp(0, -0.18, prepP)
+              MathUtils.lerp(-0.25, -0.65, prepP),
+              MathUtils.lerp(0.38, 0.32, prepP),
+              MathUtils.lerp(0, -0.28, prepP)
             );
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.55, -0.45, prepP),
-              MathUtils.lerp(0.28, 1.45, prepP),
-              MathUtils.lerp(-0.22, -0.85, prepP)
+              MathUtils.lerp(-0.55, -0.38, prepP),
+              MathUtils.lerp(-0.28, -1.62, prepP),
+              MathUtils.lerp(0.22, 1.05, prepP)
             );
-            racketGroupRef.current.rotation.set(0.25, 1.15, -0.65);
+            racketGroupRef.current.rotation.set(0.20, -1.35, 0.85);
 
-            // Brazo izquierdo completamente libre abierto a la izquierda
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
+            // BRAZO IZQUIERDO COMPLETAMENTE LIBRE, APUNTANDO A LA IZQUIERDA (EQUILIBRIO, >1m de distancia)
+            leftArmRef.current.position.set(
+              MathUtils.lerp(0.25, 0.45, prepP),
+              MathUtils.lerp(0.38, 0.40, prepP),
+              MathUtils.lerp(0, 0.18, prepP)
+            );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.65, -0.85, prepP),
-              MathUtils.lerp(-0.28, 0.55, prepP),
-              MathUtils.lerp(0.28, 0.35, prepP)
+              MathUtils.lerp(-0.65, -1.15, prepP),
+              MathUtils.lerp(0.28, 0.75, prepP),
+              MathUtils.lerp(-0.28, -0.65, prepP)
             );
           } else if (strokePhase < 0.62) {
-            // Latigazo horizontal amplio a una mano a la derecha
+            // Fase 2: Latigazo horizontal amplio a una mano por la derecha
             const strikeP = (strokePhase - 0.28) / 0.34;
-            const torsoTwist = MathUtils.lerp(0.88, -0.68, strikeP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(-0.95, 0.85, strikeP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
+            // El brazo derecho barre a gran distancia por la derecha (X local = -0.58m)
             rightArmRef.current.position.set(
-              MathUtils.lerp(0.42, 0.38, strikeP),
-              MathUtils.lerp(0.34, 0.36, strikeP),
-              MathUtils.lerp(-0.18, 0.22, strikeP)
+              MathUtils.lerp(-0.65, -0.58, strikeP),
+              MathUtils.lerp(0.32, 0.36, strikeP),
+              MathUtils.lerp(-0.28, 0.35, strikeP)
             );
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.45, 0.88, strikeP),
-              MathUtils.lerp(1.45, -0.38, strikeP),
-              MathUtils.lerp(-0.85, 0.45, strikeP)
+              MathUtils.lerp(-0.38, 0.95, strikeP),
+              MathUtils.lerp(-1.62, 0.45, strikeP),
+              MathUtils.lerp(1.05, -0.55, strikeP)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.25, 0.85, strikeP),
-              MathUtils.lerp(1.15, -0.28, strikeP),
-              MathUtils.lerp(-0.65, 0.45, strikeP)
+              MathUtils.lerp(0.20, 0.90, strikeP),
+              MathUtils.lerp(-1.35, 0.35, strikeP),
+              MathUtils.lerp(0.85, -0.52, strikeP)
             );
 
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
-            leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.85, -0.35, strikeP),
-              MathUtils.lerp(0.55, -0.95, strikeP),
-              MathUtils.lerp(0.35, 0.95, strikeP)
-            );
+            // Brazo izquierdo se mantiene libre al costado izquierdo
+            leftArmRef.current.position.set(0.35, 0.36, -0.05);
+            leftArmRef.current.rotation.set(-0.45, 0.25, -0.20);
           } else {
-            // Terminación alta sobre hombro izquierdo
+            // Fase 3: Terminación alta a una mano envolviendo sobre el hombro izquierdo
             const wrapP = (strokePhase - 0.62) / 0.38;
-            const torsoTwist = MathUtils.lerp(-0.68, 0, wrapP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(0.85, 0, wrapP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
+            // El brazo derecho solo envuelve sobre el hombro izquierdo
             rightArmRef.current.position.set(
-              MathUtils.lerp(0.38, 0.25, wrapP),
+              MathUtils.lerp(-0.58, -0.25, wrapP),
               MathUtils.lerp(0.36, 0.38, wrapP),
-              MathUtils.lerp(0.22, 0, wrapP)
+              MathUtils.lerp(0.35, 0, wrapP)
             );
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(0.88, -0.62, wrapP),
-              MathUtils.lerp(-0.38, 0.26, wrapP),
-              MathUtils.lerp(0.45, -0.2, wrapP)
+              MathUtils.lerp(0.95, -0.62, wrapP),
+              MathUtils.lerp(0.45, -0.26, wrapP),
+              MathUtils.lerp(-0.55, 0.2, wrapP)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.85, 0.55, wrapP),
-              MathUtils.lerp(-0.28, 0.18, wrapP),
-              MathUtils.lerp(0.45, -0.25, wrapP)
+              MathUtils.lerp(0.90, 0.55, wrapP),
+              MathUtils.lerp(0.35, -0.18, wrapP),
+              MathUtils.lerp(-0.52, 0.25, wrapP)
             );
 
-            leftArmRef.current.position.set(-0.25, 0.38, 0);
-            leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.35, -0.68, wrapP),
-              MathUtils.lerp(-0.95, -0.28, wrapP),
-              MathUtils.lerp(0.95, 0.28, wrapP)
-            );
+            leftArmRef.current.position.set(0.25, 0.38, 0);
+            leftArmRef.current.rotation.set(-0.68, 0.28, -0.28);
           }
         }
       } else {
-        // RESET DEFAULT SHOULDER SOCKET POSITIONS WHEN NOT SWINGING
-        rightArmRef.current.position.set(0.25, 0.38, 0);
-        leftArmRef.current.position.set(-0.25, 0.38, 0);
+        // RESET DEFAULT SHOULDER SOCKET POSITIONS WHEN NOT SWINGING (Right Arm at -0.25, Left Arm at +0.25)
+        rightArmRef.current.position.set(-0.25, 0.38, 0);
+        leftArmRef.current.position.set(0.25, 0.38, 0);
 
         if (isServingToss) {
           // AUTHENTIC LEFT-HAND SERVICE TOSS ELEVATION & TROPHY POSE COILING
@@ -706,56 +716,56 @@ export const Player3D: React.FC<Player3DProps> = ({
 
             leftArmRef.current.rotation.set(
               MathUtils.lerp(-0.75, -2.75, liftEase),
-              MathUtils.lerp(-0.15, -0.12, liftEase),
-              MathUtils.lerp(0.15, 0.18, liftEase)
+              MathUtils.lerp(0.15, 0.12, liftEase),
+              MathUtils.lerp(-0.15, -0.18, liftEase)
             );
             rightArmRef.current.rotation.set(
               MathUtils.lerp(-0.25, -1.75, liftEase),
-              MathUtils.lerp(0.25, 0.48, liftEase),
-              MathUtils.lerp(-0.2, -0.68, liftEase)
+              MathUtils.lerp(-0.25, -0.48, liftEase),
+              MathUtils.lerp(0.2, 0.68, liftEase)
             );
             racketGroupRef.current.rotation.set(
               MathUtils.lerp(0.5, 0.85, liftEase),
-              MathUtils.lerp(0.2, -0.22, liftEase),
-              MathUtils.lerp(-0.3, 0.42, liftEase)
+              MathUtils.lerp(-0.2, 0.22, liftEase),
+              MathUtils.lerp(0.3, -0.42, liftEase)
             );
             torsoGroupRef.current.rotation.set(
               MathUtils.lerp(0.12, -0.18, liftEase),
-              MathUtils.lerp(0.15, 0.28, liftEase),
-              MathUtils.lerp(0, -0.12, liftEase)
+              MathUtils.lerp(-0.15, -0.28, liftEase),
+              MathUtils.lerp(0, 0.12, liftEase)
             );
           } else {
             // Ball is in free flight ascending to apex
-            leftArmRef.current.rotation.set(-2.75, -0.12, 0.18);
-            rightArmRef.current.rotation.set(-1.75, 0.48, -0.68);
-            racketGroupRef.current.rotation.set(0.85, -0.22, 0.42);
-            torsoGroupRef.current.rotation.set(-0.18, 0.28, -0.12);
+            leftArmRef.current.rotation.set(-2.75, 0.12, -0.18);
+            rightArmRef.current.rotation.set(-1.75, -0.48, 0.68);
+            racketGroupRef.current.rotation.set(0.85, 0.22, -0.42);
+            torsoGroupRef.current.rotation.set(-0.18, -0.28, 0.12);
           }
         } else if (isServePrep) {
-          torsoGroupRef.current.rotation.set(0.12, 0.22, 0);
-          leftArmRef.current.rotation.set(-0.75, -0.15, 0.15);
-          rightArmRef.current.rotation.set(-0.25, 0.25, -0.2);
-          racketGroupRef.current.rotation.set(0.5, 0.2, -0.3);
+          torsoGroupRef.current.rotation.set(0.12, -0.22, 0);
+          leftArmRef.current.rotation.set(-0.75, 0.15, -0.15);
+          rightArmRef.current.rotation.set(-0.25, -0.25, 0.2);
+          racketGroupRef.current.rotation.set(0.5, -0.2, 0.3);
         } else if (isRunning) {
           torsoGroupRef.current.rotation.y = 0;
           const leftArmSwing = -Math.sin(gaitPhase) * 0.75;
           const rightArmPump = Math.sin(gaitPhase) * 0.4;
 
-          leftArmRef.current.rotation.set(leftArmSwing, -0.1, 0.15);
-          rightArmRef.current.rotation.set(-0.25 + rightArmPump, 0.25, -0.2);
-          racketGroupRef.current.rotation.set(0.6, 0.2, -0.25);
+          leftArmRef.current.rotation.set(leftArmSwing, 0.1, -0.15);
+          rightArmRef.current.rotation.set(-0.25 + rightArmPump, -0.25, 0.2);
+          racketGroupRef.current.rotation.set(0.6, -0.2, 0.25);
         } else {
           torsoGroupRef.current.rotation.y = 0;
           rightArmRef.current.rotation.set(
             -0.62 + readyPulse * 0.03,
-            0.26,
-            -0.2
+            -0.26,
+            0.2
           );
-          racketGroupRef.current.rotation.set(0.55, 0.18, -0.25);
+          racketGroupRef.current.rotation.set(0.55, -0.18, 0.25);
           leftArmRef.current.rotation.set(
             -0.68 + readyPulse * 0.03,
-            -0.28,
-            0.28
+            0.28,
+            -0.28
           );
         }
       }
@@ -878,25 +888,25 @@ export const Player3D: React.FC<Player3DProps> = ({
             <meshStandardMaterial color={shirtAccentColor} metalness={0.6} roughness={0.3} />
           </mesh>
 
-          {/* Left Sleeve Trim & Rounded Deltoid Cap */}
-          <group position={[-0.25, 0.38, 0]}>
-            <mesh castShadow>
-              <sphereGeometry args={[0.095, 20, 20]} />
-              <meshStandardMaterial color={shirtColor} roughness={0.5} />
-            </mesh>
-            <mesh position={[-0.02, -0.05, 0]} rotation={[0, 0, 0.2]}>
-              <cylinderGeometry args={[0.088, 0.088, 0.025, 20]} />
-              <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
-            </mesh>
-          </group>
-
-          {/* Right Sleeve Trim & Rounded Deltoid Cap */}
+          {/* Left Sleeve Trim & Rounded Deltoid Cap (Anatomical Left: +0.25) */}
           <group position={[0.25, 0.38, 0]}>
             <mesh castShadow>
               <sphereGeometry args={[0.095, 20, 20]} />
               <meshStandardMaterial color={shirtColor} roughness={0.5} />
             </mesh>
             <mesh position={[0.02, -0.05, 0]} rotation={[0, 0, -0.2]}>
+              <cylinderGeometry args={[0.088, 0.088, 0.025, 20]} />
+              <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
+            </mesh>
+          </group>
+
+          {/* Right Sleeve Trim & Rounded Deltoid Cap (Anatomical Right: -0.25) */}
+          <group position={[-0.25, 0.38, 0]}>
+            <mesh castShadow>
+              <sphereGeometry args={[0.095, 20, 20]} />
+              <meshStandardMaterial color={shirtColor} roughness={0.5} />
+            </mesh>
+            <mesh position={[-0.02, -0.05, 0]} rotation={[0, 0, 0.2]}>
               <cylinderGeometry args={[0.088, 0.088, 0.025, 20]} />
               <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
             </mesh>
@@ -931,20 +941,20 @@ export const Player3D: React.FC<Player3DProps> = ({
             {/* Expressive Athletic Eyes */}
             <group position={[0, 0.21, 0.155]}>
               {/* Left Eye */}
-              <mesh position={[-0.055, 0, 0]}>
-                <sphereGeometry args={[0.022, 12, 12]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.2} />
-              </mesh>
-              <mesh position={[-0.055, 0, 0.015]}>
-                <sphereGeometry args={[0.012, 10, 10]} />
-                <meshStandardMaterial color="#1e293b" />
-              </mesh>
-              {/* Right Eye */}
               <mesh position={[0.055, 0, 0]}>
                 <sphereGeometry args={[0.022, 12, 12]} />
                 <meshStandardMaterial color="#ffffff" roughness={0.2} />
               </mesh>
               <mesh position={[0.055, 0, 0.015]}>
+                <sphereGeometry args={[0.012, 10, 10]} />
+                <meshStandardMaterial color="#1e293b" />
+              </mesh>
+              {/* Right Eye */}
+              <mesh position={[-0.055, 0, 0]}>
+                <sphereGeometry args={[0.022, 12, 12]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.2} />
+              </mesh>
+              <mesh position={[-0.055, 0, 0.015]}>
                 <sphereGeometry args={[0.012, 10, 10]} />
                 <meshStandardMaterial color="#1e293b" />
               </mesh>
@@ -992,42 +1002,42 @@ export const Player3D: React.FC<Player3DProps> = ({
           </group>
 
           {/* ====================================================================
-              2. ARTICULATED LEFT ARM & HAND (Holding / Tossing Ball)
+              2. ARTICULATED LEFT ARM & HAND (Holding / Tossing Ball - Positioned at +0.25)
               ==================================================================== */}
-          <group ref={leftArmRef} position={[-0.25, 0.38, 0]}>
+          <group ref={leftArmRef} position={[0.25, 0.38, 0]}>
             {/* Left Bicep */}
-            <mesh position={[-0.03, -0.14, 0.02]} rotation={[0.2, 0, 0.3]} castShadow>
+            <mesh position={[0.03, -0.14, 0.02]} rotation={[0.2, 0, -0.3]} castShadow>
               <capsuleGeometry args={[0.058, 0.2, 16, 20]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Left Elbow Joint */}
-            <mesh position={[-0.05, -0.27, 0.04]}>
+            <mesh position={[0.05, -0.27, 0.04]}>
               <sphereGeometry args={[0.054, 14, 14]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Left Forearm */}
-            <mesh position={[-0.04, -0.38, 0.08]} rotation={[-0.3, 0, 0.1]} castShadow>
+            <mesh position={[0.04, -0.38, 0.08]} rotation={[-0.3, 0, -0.1]} castShadow>
               <capsuleGeometry args={[0.05, 0.18, 16, 20]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Terrycloth Sweatband */}
-            <mesh position={[-0.03, -0.46, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh position={[0.03, -0.46, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.054, 0.054, 0.045, 20]} />
               <meshStandardMaterial color="#ffffff" roughness={0.9} />
             </mesh>
             {/* Left Hand: Modeled Palm & Fingers for Holding/Releasing Ball */}
-            <group position={[-0.03, -0.51, 0.11]}>
+            <group position={[0.03, -0.51, 0.11]}>
               <mesh castShadow>
                 <boxGeometry args={[0.055, 0.05, 0.025]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
               {/* Opposed Thumb */}
-              <mesh position={[0.025, 0.01, 0.015]} rotation={[0, 0.4, 0.2]}>
+              <mesh position={[-0.025, 0.01, 0.015]} rotation={[0, -0.4, -0.2]}>
                 <capsuleGeometry args={[0.012, 0.03, 8, 8]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
               {/* Cupped Fingers */}
-              <mesh position={[-0.005, -0.032, 0.01]} rotation={[-0.3, 0, 0]}>
+              <mesh position={[0.005, -0.032, 0.01]} rotation={[-0.3, 0, 0]}>
                 <boxGeometry args={[0.048, 0.035, 0.015]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
@@ -1035,49 +1045,49 @@ export const Player3D: React.FC<Player3DProps> = ({
           </group>
 
           {/* ====================================================================
-              3. ARTICULATED RIGHT ARM, HAND & PRO GRAPHITE RACKET
+              3. ARTICULATED RIGHT ARM, HAND & PRO GRAPHITE RACKET (Positioned at -0.25)
               ==================================================================== */}
-          <group ref={rightArmRef} position={[0.25, 0.38, 0]}>
+          <group ref={rightArmRef} position={[-0.25, 0.38, 0]}>
             {/* Right Bicep */}
-            <mesh position={[0.03, -0.14, 0.04]} rotation={[-0.4, 0, -0.2]} castShadow>
+            <mesh position={[-0.03, -0.14, 0.04]} rotation={[-0.4, 0, 0.2]} castShadow>
               <capsuleGeometry args={[0.062, 0.2, 16, 20]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Right Elbow Joint */}
-            <mesh position={[0.05, -0.27, 0.08]}>
+            <mesh position={[-0.05, -0.27, 0.08]}>
               <sphereGeometry args={[0.056, 14, 14]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Right Forearm */}
-            <mesh position={[0.04, -0.2, 0.22]} rotation={[-1.1, 0, 0.1]} castShadow>
+            <mesh position={[-0.04, -0.2, 0.22]} rotation={[-1.1, 0, -0.1]} castShadow>
               <capsuleGeometry args={[0.052, 0.18, 16, 20]} />
               <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Terrycloth Sweatband */}
-            <mesh position={[0.03, -0.13, 0.3]} rotation={[0.4, 0, 0]}>
+            <mesh position={[-0.03, -0.13, 0.3]} rotation={[0.4, 0, 0]}>
               <cylinderGeometry args={[0.056, 0.056, 0.045, 20]} />
               <meshStandardMaterial color="#ffffff" roughness={0.9} />
             </mesh>
             {/* Right Hand Wrapping Tightly Around Handle */}
-            <group position={[0.02, -0.08, 0.35]}>
+            <group position={[-0.02, -0.08, 0.35]}>
               <mesh castShadow>
                 <boxGeometry args={[0.058, 0.052, 0.028]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
               {/* Opposed Thumb wrapped around grip */}
-              <mesh position={[-0.028, 0.01, 0.015]} rotation={[0, -0.5, -0.3]}>
+              <mesh position={[0.028, 0.01, 0.015]} rotation={[0, 0.5, 0.3]}>
                 <capsuleGeometry args={[0.013, 0.034, 8, 8]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
               {/* Wrapped Fingers */}
-              <mesh position={[0.01, -0.02, 0.025]} rotation={[0.6, 0, 0]}>
+              <mesh position={[-0.01, -0.02, 0.025]} rotation={[0.6, 0, 0]}>
                 <capsuleGeometry args={[0.018, 0.048, 8, 8]} />
                 <meshStandardMaterial color={skinColor} roughness={0.58} />
               </mesh>
             </group>
 
             {/* PRO GRAPHITE TENNIS RACKET */}
-            <group ref={racketGroupRef} position={[0.02, -0.06, 0.38]} rotation={[0.5, 0.2, -0.3]}>
+            <group ref={racketGroupRef} position={[-0.02, -0.06, 0.38]} rotation={[0.5, -0.2, 0.3]}>
               {/* Branded Butt Cap */}
               <mesh position={[0, -0.165, 0]}>
                 <cylinderGeometry args={[0.026, 0.028, 0.02, 16]} />
@@ -1138,7 +1148,7 @@ export const Player3D: React.FC<Player3DProps> = ({
         {/* ====================================================================
             5. ARTICULATED LEFT LEG & PRO TOUR SNEAKER (Strictly Parallel Track)
             ==================================================================== */}
-        <group ref={leftLegRef} position={[-0.28, -0.08, 0]}>
+        <group ref={leftLegRef} position={[0.28, -0.08, 0]}>
           {/* Muscular Thigh */}
           <mesh position={[0, -0.16, 0]} castShadow>
             <capsuleGeometry args={[0.08, 0.25, 16, 20]} />
@@ -1207,7 +1217,7 @@ export const Player3D: React.FC<Player3DProps> = ({
         {/* ====================================================================
             6. ARTICULATED RIGHT LEG & PRO TOUR SNEAKER (Strictly Parallel Track)
             ==================================================================== */}
-        <group ref={rightLegRef} position={[0.28, -0.08, 0]}>
+        <group ref={rightLegRef} position={[-0.28, -0.08, 0]}>
           {/* Muscular Thigh */}
           <mesh position={[0, -0.16, 0]} castShadow>
             <capsuleGeometry args={[0.08, 0.25, 16, 20]} />

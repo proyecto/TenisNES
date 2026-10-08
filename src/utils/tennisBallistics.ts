@@ -43,15 +43,15 @@ export function evaluateHitReach(
   const dx = ballPos[0] - playerPos[0];
   const dz = ballPos[2] - playerPos[2];
 
-  // For Player 1 (facing net at -Z): right side is dx >= -0.10
-  // For Opponent (facing P1 at +Z): right side is dx <= +0.10
-  const isRightHandSide = isOpponent ? dx <= 0.10 : dx >= -0.10;
+  // For Player 1 (facing net at -Z): right side (derecha/drive) is strictly dx >= 0
+  // For Opponent (facing P1 at +Z): right side (derecha/drive) is strictly dx <= 0
+  const isRightHandSide = isOpponent ? dx <= 0 : dx >= 0;
   const shotType: 'drive' | 'backhand' = isRightHandSide ? 'drive' : 'backhand';
 
-  // Asymmetric horizontal reach (compact oval base):
-  // Drive (mano diestra a 1 mano): reach (~1.65m)
-  // Backhand (2 manos): shorter, compact reach (~1.15m)
-  const maxReachX = isRightHandSide ? 1.65 : 1.15;
+  // Asymmetric horizontal reach:
+  // Drive (1 mano a la derecha): gran alcance (~1.95m)
+  // Backhand (2 manos a la izquierda): alcance corto y compacto (~1.15m)
+  const maxReachX = isRightHandSide ? 1.95 : 1.15;
 
   // Front-back reach along direction of play (reduced from 3.2m depth to 1.65m)
   const forwardDz = isOpponent ? dz : -dz;
