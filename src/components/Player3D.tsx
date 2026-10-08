@@ -11,22 +11,29 @@ interface Player3DProps {
 }
 
 /**
- * Authentic, dynamic 3D tennis athlete with realistic unified skeletal kinematics:
- * 1. Unified Pelvis-Torso Skeleton (torso is firmly attached to the hips; never breaks):
- *    - In ready stance, pelvis sinks down & back ("bajando el culo")
- *    - Torso hinges forward naturally at the lumbar spine (~32° forward lean)
- *    - Head counter-rotates upward to keep eyes locked straight ahead on the ball
- * 2. Strictly Parallel Legs ("piernas paralelas"):
- *    - Left and right legs sit on parallel tracks (X = -0.28m and X = +0.28m)
- *    - Motion is strictly in the sagittal plane (pure X-axis flexion/extension; NO crossed angles)
- *    - Deep knee flexion and parallel feet planted flat on the court
- * 3. Directional turn & running footwork ("se giran y corren en la dirección de la pelota"):
- *    - Body rotates yaw to face the movement vector
- *    - Smooth transition between deep squat stance and parallel-track sprint gait
- * 4. Open-stance direct forehand drive with right hand ("golpe directo con la mano diestra"):
- *    - Low, solid open stance base
- *    - Torso uncoils, right arm drives directly through the ball with topspin
- *    - Left arm counter-balances open (Federer style) with high follow-through
+ * Modern Grand Slam Tour Athlete ("Estilo Tour Moderno"):
+ * - High-definition anatomical styling: sculpted athletic V-taper physique, detailed polo jersey,
+ *   turn-down collar, technical vents, defined deltoids/arms, terrycloth sweatbands,
+ *   and articulated hands with fingers and thumb.
+ * - Stylized athletic head with facial profile, focused eyes, layered hair, and tour headband with fluttering ribbons.
+ * - Pro tour tennis sneakers with EVA midsole cushion, laces, and herringbone tread.
+ * - Pro graphite racket with octagonal grip wrap, open split V-throat, elliptical head, bumper guard, and strings grid.
+ *
+ * Authentic Tennis Kinematics:
+ * 1. Left-Hand Serve Toss:
+ *    - In serve_prep: Left hand cradles the ball in the palm at waist level.
+ *    - In serving (<0.42s): Left arm extends straight up, carrying the ball up to the 2.05m release point.
+ *      Meanwhile, the right arm coils smoothly into the Trophy Pose (elbow at 90° behind head, racket behind neck).
+ *    - In serving (>=0.42s): Left hand releases ball; left arm stays extended pointing straight up at the ascending ball
+ *      to align shoulders while right arm holds the Trophy Pose ready for the overhead smash.
+ * 2. Right-Hand Smash:
+ *    - Explosive overhead smash strike with the right arm uncoiling from above, snapping downward with pronation,
+ *      while the left arm tucks into the ribs for rotational torque.
+ * 3. Forehand (Drive - Right Hand):
+ *    - Visibly more velocity, power and whip: right arm loops into deep lag, unleashes explosive topspin whip
+ *      with high follow-through wrapping over the left shoulder, left arm opens out wide for balance.
+ * 4. Backhand (Revés - Two-Handed):
+ *    - Controlled, compact drive with both hands on the grip, tighter flatter swing path, wrapping over right shoulder.
  */
 export const Player3D: React.FC<Player3DProps> = ({
   position,
@@ -37,6 +44,7 @@ export const Player3D: React.FC<Player3DProps> = ({
   const pelvisGroupRef = useRef<Group>(null);
   const torsoGroupRef = useRef<Group>(null);
   const headGroupRef = useRef<Group>(null);
+  const headbandRibbonRef = useRef<Group>(null);
   const leftArmRef = useRef<Group>(null);
   const rightArmRef = useRef<Group>(null);
   const leftLegRef = useRef<Group>(null);
@@ -77,6 +85,8 @@ export const Player3D: React.FC<Player3DProps> = ({
     const t = state.clock.getElapsedTime();
     const matchStatus = useTennisStore.getState().matchStatus;
     const serveSide = useTennisStore.getState().serveSide;
+    const server = useTennisStore.getState().server;
+    const serveTossTime = useTennisStore.getState().serveTossTime;
     const p1SwingTrigger = useTennisStore.getState().p1SwingTrigger;
     const cpuSwingTrigger = useTennisStore.getState().cpuSwingTrigger;
 
@@ -84,7 +94,6 @@ export const Player3D: React.FC<Player3DProps> = ({
     // 1. POSITION & VELOCITY UPDATES
     // =========================================================================
     if (isControlled) {
-      const server = useTennisStore.getState().server;
       if (
         matchStatus === 'serve_prep' &&
         (lastMatchStatus.current !== 'serve_prep' || lastServeSide.current !== serveSide)
@@ -108,10 +117,20 @@ export const Player3D: React.FC<Player3DProps> = ({
       let dx = 0;
       let dz = 0;
 
-      if (keys.current.left) dx -= 1;
-      if (keys.current.right) dx += 1;
-      if (keys.current.forward) dz -= 1;
-      if (keys.current.backward) dz += 1;
+      // When player presses space or is swinging, player stops translating:
+      // directional keys are dedicated to directing the shot rather than body movement!
+      // Once the player tosses the ball in the air (matchStatus === 'serving' && server === 'p1'),
+      // the server is locked in position to aim the serve!
+      const isServerLockedDuringToss = matchStatus === 'serving' && server === 'p1';
+      const isLockedInSwing =
+        isSwinging.current || (keys.current.action && matchStatus !== 'serve_prep') || isServerLockedDuringToss;
+
+      if (!isLockedInSwing) {
+        if (keys.current.left) dx -= 1;
+        if (keys.current.right) dx += 1;
+        if (keys.current.forward) dz -= 1;
+        if (keys.current.backward) dz += 1; // Downward baseline recovery
+      }
 
       const isMoving = dx !== 0 || dz !== 0;
 
@@ -166,35 +185,73 @@ export const Player3D: React.FC<Player3DProps> = ({
         swingProgress.current = 1.0;
       }
     } else if (isOpponent) {
-      // CPU AI predictive movement
+      // ADVANCED CPU TENNIS AI (Subidas a la red ante dejadas, peloteo dinámico y voleas)
       const ball = useTennisStore.getState().ballPos;
       const ballV = useTennisStore.getState().ballVel;
       const status = useTennisStore.getState().matchStatus;
 
       let targetX = 0;
-      let targetZ = -12.2;
+      let targetZ = -11.8;
+      let desiredCpuSpeed = 8.6;
 
       if (status === 'playing' || status === 'serving') {
-        const isBallIncoming = ballV[2] < 0;
+        const isBallOnCpuSide = ball[2] < 0;
+        const isBallMovingToCpu = ballV[2] < -0.5;
 
-        if (isBallIncoming) {
-          const timeToReach = Math.max(0.1, (ball[2] - (-12.0)) / Math.max(0.5, -ballV[2]));
-          const predictedX = ball[0] + ballV[0] * timeToReach;
-          targetX = Math.max(-5.5, Math.min(5.5, predictedX + 0.25));
-          targetZ = Math.max(-13.0, Math.min(-9.0, ball[2] < -8.5 ? ball[2] - 0.5 : -12.0));
+        if (isBallMovingToCpu || isBallOnCpuSide) {
+          let predZ = -11.5;
+          let predX = ball[0];
+
+          if (isBallMovingToCpu && ball[1] > 0.2) {
+            // Ball is airborne moving toward CPU: estimate reachable landing plane
+            const targetY = 0.85;
+            const dy = targetY - ball[1];
+            const disc = ballV[1] * ballV[1] - 2 * 9.81 * dy;
+            let tReach = 0.45;
+            if (disc > 0) {
+              const t1 = (-ballV[1] - Math.sqrt(disc)) / -9.81;
+              const t2 = (-ballV[1] + Math.sqrt(disc)) / -9.81;
+              tReach = Math.max(0.1, t1 > 0.05 ? t1 : t2 > 0.05 ? t2 : 0.45);
+            } else {
+              tReach = Math.max(0.1, (ball[1] - 0.2) / Math.max(1.0, -ballV[1]));
+            }
+
+            predZ = ball[2] + ballV[2] * tReach;
+            predX = ball[0] + ballV[0] * tReach;
+          } else {
+            // Ball bounced or already on CPU side: track directly
+            predZ = ball[2];
+            predX = ball[0];
+          }
+
+          // IS IT A SHORT BALL / DEJADA NEAR THE NET?
+          const isShortBall = predZ > -7.5; // Landing in front half of CPU court
+
+          if (isShortBall) {
+            // CPU SPRINTS TO THE NET TO RETRIEVE THE DROP SHOT!
+            desiredCpuSpeed = 9.4; // Max athletic sprint
+            targetZ = Math.max(-13.0, Math.min(-1.3, predZ - 0.55));
+            const offsetSide = predX >= 0 ? -0.35 : 0.35;
+            targetX = Math.max(-5.0, Math.min(5.0, predX + offsetSide));
+          } else {
+            // Deep baseline rally
+            desiredCpuSpeed = 8.2;
+            targetZ = Math.max(-13.5, Math.min(-9.0, predZ - 0.65));
+            const offsetSide = predX >= 0 ? -0.35 : 0.35;
+            targetX = Math.max(-5.2, Math.min(5.2, predX + offsetSide));
+          }
         } else {
+          // Ball is heading back towards Player 1: recover smoothly
+          desiredCpuSpeed = 6.2;
+          targetZ = -11.5;
           targetX = 0;
-          targetZ = -12.2;
         }
       } else {
-        const server = useTennisStore.getState().server;
         const currentServeSide = useTennisStore.getState().serveSide;
         if (server === 'cpu') {
-          // CPU server standing at baseline in correct serving quadrant
           targetX = currentServeSide === 'deuce' ? -1.8 : 1.8;
           targetZ = -12.35;
         } else {
-          // CPU receiver ready for P1 serve
           targetX = currentServeSide === 'deuce' ? -2.2 : 2.2;
           targetZ = -12.35;
         }
@@ -205,10 +262,9 @@ export const Player3D: React.FC<Player3DProps> = ({
       const dist = Math.hypot(diffX, diffZ);
       const isMoving = dist > 0.08;
 
-      const cpuSpeed = 7.6;
       if (isMoving) {
-        const vx = (diffX / dist) * Math.min(dist, cpuSpeed);
-        const vz = (diffZ / dist) * Math.min(dist, cpuSpeed);
+        const vx = (diffX / dist) * Math.min(dist, desiredCpuSpeed);
+        const vz = (diffZ / dist) * Math.min(dist, desiredCpuSpeed);
         velocity.current.x = vx;
         velocity.current.z = vz;
         currentPos.current.x += vx * delta;
@@ -218,8 +274,9 @@ export const Player3D: React.FC<Player3DProps> = ({
         velocity.current.z = 0;
       }
 
+      // Allow CPU to move all the way to Z = -1.2m at the net!
       currentPos.current.x = Math.max(-6.2, Math.min(6.2, currentPos.current.x));
-      currentPos.current.z = Math.max(-14.5, Math.min(-8.0, currentPos.current.z));
+      currentPos.current.z = Math.max(-14.5, Math.min(-1.2, currentPos.current.z));
 
       useTennisStore.getState().cpuPos = [currentPos.current.x, currentPos.current.y, currentPos.current.z];
 
@@ -232,18 +289,16 @@ export const Player3D: React.FC<Player3DProps> = ({
     }
 
     // =========================================================================
-    // 2. DIRECTIONAL TURNING & ORIENTATION ("SE GIRAN Y CORREN EN LA DIRECCIÓN")
+    // 2. DIRECTIONAL TURNING & SPRINT ORIENTATION
     // =========================================================================
     const speed = Math.hypot(velocity.current.x, velocity.current.z);
     const isRunning = speed > 0.45;
 
-    // Advance running gait cycle with cadence proportional to velocity
     if (isRunning) {
       stepProgress.current += delta * Math.min(speed * 2.8, 22.0);
     }
     const gaitPhase = stepProgress.current;
 
-    // Target facing angle
     let targetFacing = isOpponent ? 0 : Math.PI;
 
     if (isSwinging.current) {
@@ -254,22 +309,18 @@ export const Player3D: React.FC<Player3DProps> = ({
       targetFacing = isOpponent ? 0 : Math.PI;
     }
 
-    // Smooth shortest-arc yaw rotation
     let angleDiff = targetFacing - currentFacingAngle.current;
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
     currentFacingAngle.current += angleDiff * Math.min(1.0, delta * 12.0);
 
-    // Lateral banking tilt when sprinting
     const targetRoll = isRunning ? (-velocity.current.x / 8.8) * 0.16 : 0;
-    const targetPitch = isRunning ? 0.12 : 0; // Forward sprint lean
+    const targetPitch = isRunning ? 0.12 : 0;
     currentTilt.current.roll = MathUtils.lerp(currentTilt.current.roll, targetRoll, 0.2);
     currentTilt.current.pitch = MathUtils.lerp(currentTilt.current.pitch, targetPitch, 0.2);
 
-    // Split-step active elastic ready pulse (frequency ~7.5 Hz)
     const readyPulse = Math.sin(t * 7.5);
 
-    // Transition blend between deep squat and sprint
     const targetSquat = isRunning ? 0.0 : isSwinging.current ? 0.85 : 1.0;
     squatAmount.current = MathUtils.lerp(squatAmount.current, targetSquat, delta * 10.0);
     const sq = squatAmount.current;
@@ -290,6 +341,13 @@ export const Player3D: React.FC<Player3DProps> = ({
       currentTilt.current.roll
     );
 
+    // Dynamic headband ribbons fluttering in wind/cadence
+    if (headbandRibbonRef.current) {
+      const flutter = Math.sin(t * 12.0 + gaitPhase) * 0.25 + (isRunning ? 0.4 : 0.1);
+      headbandRibbonRef.current.rotation.x = flutter;
+      headbandRibbonRef.current.rotation.y = Math.cos(t * 8.0) * 0.15;
+    }
+
     // =========================================================================
     // 3. UNIFIED SKELETON: PELVIS POSITION & PARALLEL LEGS KINEMATICS
     // =========================================================================
@@ -302,28 +360,22 @@ export const Player3D: React.FC<Player3DProps> = ({
       torsoGroupRef.current &&
       headGroupRef.current
     ) {
-      // 1. Pelvis height and depth (low center of gravity: hips down & back)
-      // When standing/sprinting: Y = 0.82m, Z = 0.0m
-      // When deep squatting: Y drops to ~0.56m, Z moves back to -0.16m ("bajando el culo")
+      // 1. Pelvis height and depth (athletic center of gravity: hips down & back)
       const currentHipY = MathUtils.lerp(0.82, 0.56 + readyPulse * 0.02, sq);
       const currentHipZ = MathUtils.lerp(0.0, -0.16, sq);
       pelvisGroupRef.current.position.set(0, currentHipY, currentHipZ);
 
-      // 2. Torso forward athletic lean & Head counter-rotation
-      // Torso tilts forward from the lumbar spine (attached directly to pelvis!)
+      // 2. Torso athletic forward hinge & Head counter-rotation
       const torsoLean = MathUtils.lerp(0.12, 0.56, sq);
       torsoGroupRef.current.rotation.x = torsoLean;
-      // Head tilts up to keep eyes focused straight ahead on the ball
       headGroupRef.current.rotation.x = -torsoLean * 0.82;
 
-      // 3. LEGS: STRICTLY PARALLEL sagittal kinematics (ZERO crossing, ZERO Y/Z twist!)
+      // 3. LEGS: STRICTLY PARALLEL sagittal kinematics
       if (isRunning) {
-        // --- PARALLEL-TRACK SPRINTING GAIT ---
-        // Hip flexion & extension strictly along forward/back axis
+        // Parallel-track sprint gait
         const leftHipSwing = Math.sin(gaitPhase) * 0.82;
         const rightHipSwing = -Math.sin(gaitPhase) * 0.82;
 
-        // Knee bends sharply on backswing (heel kicks up towards glute), extends on plant
         const leftKneeBend = -Math.max(0.12, -Math.sin(gaitPhase)) * 1.15;
         const rightKneeBend = -Math.max(0.12, Math.sin(gaitPhase)) * 1.15;
 
@@ -333,10 +385,7 @@ export const Player3D: React.FC<Player3DProps> = ({
         leftKneeRef.current.rotation.set(leftKneeBend, 0, 0);
         rightKneeRef.current.rotation.set(rightKneeBend, 0, 0);
       } else {
-        // --- PARALLEL-TRACK DEEP SQUAT / READY STANCE ---
-        // Both thighs flex forward in parallel: +0.82 rad (~47° forward)
-        // Both knees bend back in parallel: -1.48 rad (~85° backward bend)
-        // Feet plant flat and parallel on court surface at X = -0.28m and X = +0.28m
+        // Parallel-track deep squat ready stance
         const thighFlex = MathUtils.lerp(0.1, 0.82 - readyPulse * 0.035, sq);
         const kneeFlex = MathUtils.lerp(-0.15, -1.48 + readyPulse * 0.07, sq);
 
@@ -349,12 +398,11 @@ export const Player3D: React.FC<Player3DProps> = ({
     }
 
     // =========================================================================
-    // 4. UPPER BODY, TORSO & 3 STROKE MOVEMENTS (SMASH / DRIVE / BACKHAND)
+    // 4. UPPER BODY, ARMS & STROKE KINEMATICS (SMASH / DRIVE / BACKHAND / TOSS)
     // =========================================================================
-    // Progress swing timer (Backhand takes longer / more deliberate stroke)
     if (isSwinging.current) {
       const swingSpeed =
-        currentShotType.current === 'backhand' ? 2.1 : currentShotType.current === 'smash' ? 2.6 : 3.2;
+        currentShotType.current === 'backhand' ? 2.2 : currentShotType.current === 'smash' ? 2.8 : 3.4;
       swingProgress.current -= delta * swingSpeed;
       if (swingProgress.current <= 0) {
         swingProgress.current = 0;
@@ -362,8 +410,9 @@ export const Player3D: React.FC<Player3DProps> = ({
       }
     }
 
-    const isServingToss = !isOpponent && matchStatus === 'serving';
-    const isServePrep = !isOpponent && matchStatus === 'serve_prep';
+    const isCurrentServer = (!isOpponent && server === 'p1') || (isOpponent && server === 'cpu');
+    const isServingToss = isCurrentServer && matchStatus === 'serving';
+    const isServePrep = isCurrentServer && matchStatus === 'serve_prep';
 
     if (torsoGroupRef.current && leftArmRef.current && rightArmRef.current && racketGroupRef.current) {
       if (isSwinging.current) {
@@ -373,512 +422,852 @@ export const Player3D: React.FC<Player3DProps> = ({
 
         if (isSmash) {
           // ===================================================================
-          // 1. SMASH (EN EL SAQUE): Raqueta hacia arriba golpeando de arriba a abajo
+          // 1. SMASH / SAQUE: A UNA MANO, POR ENCIMA DE LA CABEZA (OVERHEAD VERTICAL)
+          // "Como si fuera un drive, pero en lugar de a la derecha, hacia arriba."
           // ===================================================================
-          if (strokePhase < 0.35) {
-            const p = strokePhase / 0.35;
-            torsoGroupRef.current.rotation.set(-0.15 + p * 0.1, 0.15, 0);
+          const jumpExtension = Math.sin(strokePhase * Math.PI) * 0.22;
+          if (pelvisGroupRef.current) {
+            pelvisGroupRef.current.position.y += jumpExtension;
+          }
+
+          if (strokePhase < 0.32) {
+            // Reaching straight up into the sky above cranium
+            const p = strokePhase / 0.32;
+            torsoGroupRef.current.rotation.set(MathUtils.lerp(0.12, -0.28, p), 0.15, 0);
+
+            // Right arm points straight UP into the sky (overhead, one hand)
+            rightArmRef.current.position.set(0.25, 0.38 + p * 0.12, 0);
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-1.6, -2.4, p), // Raqueta hacia arriba al máximo
-              MathUtils.lerp(0.5, 0.1, p),
-              MathUtils.lerp(-0.7, -0.15, p)
+              MathUtils.lerp(-1.75, -2.95, p), // Straight UP into the sky!
+              MathUtils.lerp(0.48, 0.05, p),
+              MathUtils.lerp(-0.68, -0.05, p)
             );
-            racketGroupRef.current.rotation.set(0.3, 0, 0);
-            leftArmRef.current.rotation.set(-2.0 + p * 0.5, -0.1, 0.2);
-          } else if (strokePhase < 0.7) {
-            const p = (strokePhase - 0.35) / 0.35;
-            torsoGroupRef.current.rotation.set(MathUtils.lerp(-0.05, 0.35, p), 0.1, 0);
-            rightArmRef.current.rotation.set(
-              MathUtils.lerp(-2.4, 0.85, p), // Golpe de arriba hacia abajo
-              MathUtils.lerp(0.1, -0.2, p),
-              MathUtils.lerp(-0.15, 0.1, p)
-            );
+            // Racket extends vertically high above cranium
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.3, 1.4, p), // Raqueta azota descendente
-              0.1,
-              -0.2
+              MathUtils.lerp(0.85, 0.1, p),
+              0,
+              0
             );
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-1.5, -0.4, p),
-              -0.2,
+              MathUtils.lerp(-2.75, -1.2, p),
+              -0.12,
               0.15
             );
-          } else {
-            const p = (strokePhase - 0.7) / 0.3;
-            torsoGroupRef.current.rotation.set(MathUtils.lerp(0.35, 0.2, p), 0, 0);
+          } else if (strokePhase < 0.68) {
+            // Violent overhead hammer strike downward
+            const p = (strokePhase - 0.32) / 0.36;
+            torsoGroupRef.current.rotation.set(MathUtils.lerp(-0.28, 0.52, p), 0.05, 0);
+
+            rightArmRef.current.position.set(0.25, 0.50 - p * 0.12, 0);
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(0.85, -0.62, p),
-              MathUtils.lerp(-0.2, 0.26, p),
-              MathUtils.lerp(0.1, -0.2, p)
+              MathUtils.lerp(-2.95, 1.25, p),
+              MathUtils.lerp(0.05, -0.32, p),
+              MathUtils.lerp(-0.05, 0.22, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(1.4, 0.55, p),
+              MathUtils.lerp(0.1, 1.75, p),
+              0.12,
+              -0.25
+            );
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
+            leftArmRef.current.rotation.set(
+              MathUtils.lerp(-1.2, -0.35, p),
+              -0.25,
+              0.28
+            );
+          } else {
+            // Follow-through across left hip & recover
+            const p = (strokePhase - 0.68) / 0.32;
+            torsoGroupRef.current.rotation.set(MathUtils.lerp(0.52, 0.15, p), 0, 0);
+
+            rightArmRef.current.position.set(0.25, 0.38, 0);
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(1.25, -0.62, p),
+              MathUtils.lerp(-0.32, 0.26, p),
+              MathUtils.lerp(0.22, -0.2, p)
+            );
+            racketGroupRef.current.rotation.set(
+              MathUtils.lerp(1.75, 0.55, p),
               0.18,
               -0.25
             );
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.4, -0.68, p),
+              MathUtils.lerp(-0.35, -0.68, p),
               -0.28,
               0.28
             );
           }
         } else if (isBackhand) {
           // ===================================================================
-          // 2. REVÉS A DOS MANOS: Ambas manos en el mango, gira a la izquierda
+          // 2. REVÉS: A DOS MANOS, Y LLEGA MÁS CORTO
+          // "El otro va a dos manos, y llega mas corto"
           // ===================================================================
           if (strokePhase < 0.34) {
-            // FASE 1: CARGA A DOS MANOS A LA IZQUIERDA
+            // Carga a dos manos a la izquierda (cerrado, compacto)
             const p = strokePhase / 0.34;
-            const twist = MathUtils.lerp(0, -0.65, p) * (isOpponent ? -1 : 1);
+            const twist = MathUtils.lerp(0, -0.92, p) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = twist;
 
+            // Ambos brazos se acercan al centro y sostienen el mango juntos
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.25, 0.16, p),
+              MathUtils.lerp(0.38, 0.34, p),
+              MathUtils.lerp(0, 0.08, p)
+            );
+            leftArmRef.current.position.set(
+              MathUtils.lerp(-0.25, -0.12, p),
+              MathUtils.lerp(0.38, 0.36, p),
+              MathUtils.lerp(0, 0.08, p)
+            );
+
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.62, -0.55, p),
-              MathUtils.lerp(0.26, -0.48, p),
-              MathUtils.lerp(-0.2, 0.38, p)
+              MathUtils.lerp(-0.62, -0.72, p),
+              MathUtils.lerp(0.26, -0.65, p),
+              MathUtils.lerp(-0.2, 0.55, p)
             );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.68, -0.68, p),
-              MathUtils.lerp(-0.28, -0.42, p),
-              MathUtils.lerp(0.28, 0.32, p)
+              MathUtils.lerp(-0.68, -0.78, p),
+              MathUtils.lerp(-0.28, -0.58, p),
+              MathUtils.lerp(0.28, 0.48, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.55, 0.4, p),
-              MathUtils.lerp(0.18, -0.65, p),
-              MathUtils.lerp(-0.25, 0.45, p)
+              MathUtils.lerp(0.55, 0.32, p),
+              MathUtils.lerp(0.18, -0.85, p),
+              MathUtils.lerp(-0.25, 0.58, p)
             );
           } else if (strokePhase < 0.7) {
-            // FASE 2: IMPACTO COORDINADO A DOS MANOS (SWING MÁS PLANO Y RECTO)
+            // Golpeo coordinado a dos manos a la izquierda
             const p = (strokePhase - 0.34) / 0.36;
-            const twist = MathUtils.lerp(-0.65, 0.48, p) * (isOpponent ? -1 : 1);
+            const twist = MathUtils.lerp(-0.92, 0.58, p) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = twist;
 
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.16, 0.18, p),
+              MathUtils.lerp(0.34, 0.35, p),
+              MathUtils.lerp(0.08, 0.06, p)
+            );
+            leftArmRef.current.position.set(
+              MathUtils.lerp(-0.12, -0.10, p),
+              MathUtils.lerp(0.36, 0.37, p),
+              MathUtils.lerp(0.08, 0.06, p)
+            );
+
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.55, 0.65, p),
-              MathUtils.lerp(-0.48, 0.35, p),
-              MathUtils.lerp(0.38, -0.25, p)
+              MathUtils.lerp(-0.72, 0.72, p),
+              MathUtils.lerp(-0.65, 0.45, p),
+              MathUtils.lerp(0.55, -0.32, p)
             );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.68, 0.55, p),
-              MathUtils.lerp(-0.42, 0.38, p),
-              MathUtils.lerp(0.32, -0.2, p)
+              MathUtils.lerp(-0.78, 0.65, p),
+              MathUtils.lerp(-0.58, 0.52, p),
+              MathUtils.lerp(0.48, -0.25, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.4, 0.6, p),
-              MathUtils.lerp(-0.65, 0.3, p),
-              MathUtils.lerp(0.45, -0.2, p)
+              MathUtils.lerp(0.32, 0.72, p),
+              MathUtils.lerp(-0.85, 0.42, p),
+              MathUtils.lerp(0.58, -0.28, p)
             );
           } else {
-            // FASE 3: TERMINACIÓN ALTA A DOS MANOS SOBRE HOMBRO DERECHO
+            // Terminación a dos manos sobre hombro derecho
             const p = (strokePhase - 0.7) / 0.3;
-            const twist = MathUtils.lerp(0.48, 0, p) * (isOpponent ? -1 : 1);
+            const twist = MathUtils.lerp(0.58, 0, p) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = twist;
 
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.18, 0.25, p),
+              MathUtils.lerp(0.35, 0.38, p),
+              MathUtils.lerp(0.06, 0, p)
+            );
+            leftArmRef.current.position.set(
+              MathUtils.lerp(-0.10, -0.25, p),
+              MathUtils.lerp(0.37, 0.38, p),
+              MathUtils.lerp(0.06, 0, p)
+            );
+
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(0.65, -0.62, p),
-              MathUtils.lerp(0.35, 0.26, p),
-              MathUtils.lerp(-0.25, -0.2, p)
+              MathUtils.lerp(0.72, -0.62, p),
+              MathUtils.lerp(0.45, 0.26, p),
+              MathUtils.lerp(-0.32, -0.2, p)
             );
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(0.55, -0.68, p),
-              MathUtils.lerp(0.38, -0.28, p),
-              MathUtils.lerp(-0.2, 0.28, p)
+              MathUtils.lerp(0.65, -0.68, p),
+              MathUtils.lerp(0.52, -0.28, p),
+              MathUtils.lerp(-0.25, 0.28, p)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.6, 0.55, p),
-              MathUtils.lerp(0.3, 0.18, p),
-              MathUtils.lerp(-0.2, -0.25, p)
+              MathUtils.lerp(0.72, 0.55, p),
+              MathUtils.lerp(0.42, 0.18, p),
+              MathUtils.lerp(-0.28, -0.25, p)
             );
           }
         } else {
           // ===================================================================
-          // 3. DRIVE A UNA MANO CON LA DERECHA (Potente, amplio, estilo Federer)
+          // 3. DRIVE: A UNA MANO, A LA DERECHA, Y LLEGA MÁS LEJOS
+          // "Uno, el drive, va a una mano, a la derecha, y llega mas lejos."
           // ===================================================================
           if (strokePhase < 0.28) {
+            // Apertura amplia a la derecha (gran alcance lateral)
             const prepP = strokePhase / 0.28;
-            const torsoTwist = MathUtils.lerp(0, 0.65, prepP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(0, 0.88, prepP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
-            rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.55, -0.65, prepP),
-              MathUtils.lerp(0.28, 0.95, prepP),
-              MathUtils.lerp(-0.22, -0.6, prepP)
+            // Brazo derecho extendido hacia afuera a la derecha
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.25, 0.42, prepP),
+              MathUtils.lerp(0.38, 0.34, prepP),
+              MathUtils.lerp(0, -0.18, prepP)
             );
-            racketGroupRef.current.rotation.set(0.4, 0.8, -0.5);
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.55, -0.45, prepP),
+              MathUtils.lerp(0.28, 1.45, prepP),
+              MathUtils.lerp(-0.22, -0.85, prepP)
+            );
+            racketGroupRef.current.rotation.set(0.25, 1.15, -0.65);
 
+            // Brazo izquierdo completamente libre abierto a la izquierda
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.65, -0.75, prepP),
-              MathUtils.lerp(-0.32, 0.35, prepP),
-              MathUtils.lerp(0.35, 0.25, prepP)
+              MathUtils.lerp(-0.65, -0.85, prepP),
+              MathUtils.lerp(-0.28, 0.55, prepP),
+              MathUtils.lerp(0.28, 0.35, prepP)
             );
           } else if (strokePhase < 0.62) {
+            // Latigazo horizontal amplio a una mano a la derecha
             const strikeP = (strokePhase - 0.28) / 0.34;
-            const torsoTwist = MathUtils.lerp(0.65, -0.45, strikeP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(0.88, -0.68, strikeP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.42, 0.38, strikeP),
+              MathUtils.lerp(0.34, 0.36, strikeP),
+              MathUtils.lerp(-0.18, 0.22, strikeP)
+            );
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(-0.65, 0.85, strikeP),
-              MathUtils.lerp(0.95, -0.25, strikeP),
-              MathUtils.lerp(-0.6, 0.15, strikeP)
+              MathUtils.lerp(-0.45, 0.88, strikeP),
+              MathUtils.lerp(1.45, -0.38, strikeP),
+              MathUtils.lerp(-0.85, 0.45, strikeP)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.4, 0.8, strikeP),
-              MathUtils.lerp(0.8, -0.2, strikeP),
-              MathUtils.lerp(-0.5, 0.3, strikeP)
+              MathUtils.lerp(0.25, 0.85, strikeP),
+              MathUtils.lerp(1.15, -0.28, strikeP),
+              MathUtils.lerp(-0.65, 0.45, strikeP)
             );
 
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
-              MathUtils.lerp(-0.75, -0.35, strikeP),
-              MathUtils.lerp(0.35, -0.85, strikeP),
-              MathUtils.lerp(0.25, 0.85, strikeP)
+              MathUtils.lerp(-0.85, -0.35, strikeP),
+              MathUtils.lerp(0.55, -0.95, strikeP),
+              MathUtils.lerp(0.35, 0.95, strikeP)
             );
           } else {
+            // Terminación alta sobre hombro izquierdo
             const wrapP = (strokePhase - 0.62) / 0.38;
-            const torsoTwist = MathUtils.lerp(-0.45, 0, wrapP) * (isOpponent ? -1 : 1);
+            const torsoTwist = MathUtils.lerp(-0.68, 0, wrapP) * (isOpponent ? -1 : 1);
             torsoGroupRef.current.rotation.y = torsoTwist;
 
+            rightArmRef.current.position.set(
+              MathUtils.lerp(0.38, 0.25, wrapP),
+              MathUtils.lerp(0.36, 0.38, wrapP),
+              MathUtils.lerp(0.22, 0, wrapP)
+            );
             rightArmRef.current.rotation.set(
-              MathUtils.lerp(0.85, -0.62, wrapP),
-              MathUtils.lerp(-0.25, 0.26, wrapP),
-              MathUtils.lerp(0.15, -0.2, wrapP)
+              MathUtils.lerp(0.88, -0.62, wrapP),
+              MathUtils.lerp(-0.38, 0.26, wrapP),
+              MathUtils.lerp(0.45, -0.2, wrapP)
             );
             racketGroupRef.current.rotation.set(
-              MathUtils.lerp(0.8, 0.55, wrapP),
-              MathUtils.lerp(-0.2, 0.18, wrapP),
-              MathUtils.lerp(0.3, -0.25, wrapP)
+              MathUtils.lerp(0.85, 0.55, wrapP),
+              MathUtils.lerp(-0.28, 0.18, wrapP),
+              MathUtils.lerp(0.45, -0.25, wrapP)
             );
 
+            leftArmRef.current.position.set(-0.25, 0.38, 0);
             leftArmRef.current.rotation.set(
               MathUtils.lerp(-0.35, -0.68, wrapP),
-              MathUtils.lerp(-0.85, -0.28, wrapP),
-              MathUtils.lerp(0.85, 0.28, wrapP)
+              MathUtils.lerp(-0.95, -0.28, wrapP),
+              MathUtils.lerp(0.95, 0.28, wrapP)
             );
           }
         }
-      } else if (isServingToss) {
-        // SERVICE TOSS POSE: Left arm reaches straight UP into the sky, right arm in Trophy Pose
-        torsoGroupRef.current.rotation.y = 0.2;
-        leftArmRef.current.rotation.set(-2.6, -0.15, 0.2); // Pointing up to sky
-        rightArmRef.current.rotation.set(-1.6, 0.5, -0.7); // Trophy pose behind head
-        racketGroupRef.current.rotation.set(0.8, -0.2, 0.4);
-      } else if (isServePrep) {
-        // SERVE PREPARATION POSE: Left hand holds ball out front, right arm relaxed
-        torsoGroupRef.current.rotation.y = 0.15;
-        leftArmRef.current.rotation.set(-0.75, -0.15, 0.15);
-        rightArmRef.current.rotation.set(-0.25, 0.25, -0.2);
-        racketGroupRef.current.rotation.set(0.5, 0.2, -0.3);
-      } else if (isRunning) {
-        // RUNNING SPRINT COUNTER-PUMP
-        torsoGroupRef.current.rotation.y = 0;
-        const leftArmSwing = -Math.sin(gaitPhase) * 0.75;
-        const rightArmPump = Math.sin(gaitPhase) * 0.4;
-
-        leftArmRef.current.rotation.set(leftArmSwing, -0.1, 0.15);
-        rightArmRef.current.rotation.set(-0.25 + rightArmPump, 0.25, -0.2);
-        racketGroupRef.current.rotation.set(0.6, 0.2, -0.25);
       } else {
-        // READY WAITING STANCE: Torso centered, hands forward ready
-        torsoGroupRef.current.rotation.y = 0;
+        // RESET DEFAULT SHOULDER SOCKET POSITIONS WHEN NOT SWINGING
+        rightArmRef.current.position.set(0.25, 0.38, 0);
+        leftArmRef.current.position.set(-0.25, 0.38, 0);
 
-        // Right hand holding racket grip forward in front of torso
-        rightArmRef.current.rotation.set(
-          -0.62 + readyPulse * 0.03,
-          0.26,
-          -0.2
-        );
-        racketGroupRef.current.rotation.set(0.55, 0.18, -0.25);
+        if (isServingToss) {
+          // AUTHENTIC LEFT-HAND SERVICE TOSS ELEVATION & TROPHY POSE COILING
+          const timeSinceToss = t - serveTossTime;
 
-        // Left hand ready in front supporting / balancing
-        leftArmRef.current.rotation.set(
-          -0.68 + readyPulse * 0.03,
-          -0.28,
-          0.28
-        );
+          if (timeSinceToss < 0.42) {
+            const p = Math.min(1.0, Math.max(0.0, timeSinceToss / 0.42));
+            const liftEase = Math.sin((p * Math.PI) / 2);
+
+            leftArmRef.current.rotation.set(
+              MathUtils.lerp(-0.75, -2.75, liftEase),
+              MathUtils.lerp(-0.15, -0.12, liftEase),
+              MathUtils.lerp(0.15, 0.18, liftEase)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.25, -1.75, liftEase),
+              MathUtils.lerp(0.25, 0.48, liftEase),
+              MathUtils.lerp(-0.2, -0.68, liftEase)
+            );
+            racketGroupRef.current.rotation.set(
+              MathUtils.lerp(0.5, 0.85, liftEase),
+              MathUtils.lerp(0.2, -0.22, liftEase),
+              MathUtils.lerp(-0.3, 0.42, liftEase)
+            );
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.12, -0.18, liftEase),
+              MathUtils.lerp(0.15, 0.28, liftEase),
+              MathUtils.lerp(0, -0.12, liftEase)
+            );
+          } else {
+            // Ball is in free flight ascending to apex
+            leftArmRef.current.rotation.set(-2.75, -0.12, 0.18);
+            rightArmRef.current.rotation.set(-1.75, 0.48, -0.68);
+            racketGroupRef.current.rotation.set(0.85, -0.22, 0.42);
+            torsoGroupRef.current.rotation.set(-0.18, 0.28, -0.12);
+          }
+        } else if (isServePrep) {
+          torsoGroupRef.current.rotation.set(0.12, 0.22, 0);
+          leftArmRef.current.rotation.set(-0.75, -0.15, 0.15);
+          rightArmRef.current.rotation.set(-0.25, 0.25, -0.2);
+          racketGroupRef.current.rotation.set(0.5, 0.2, -0.3);
+        } else if (isRunning) {
+          torsoGroupRef.current.rotation.y = 0;
+          const leftArmSwing = -Math.sin(gaitPhase) * 0.75;
+          const rightArmPump = Math.sin(gaitPhase) * 0.4;
+
+          leftArmRef.current.rotation.set(leftArmSwing, -0.1, 0.15);
+          rightArmRef.current.rotation.set(-0.25 + rightArmPump, 0.25, -0.2);
+          racketGroupRef.current.rotation.set(0.6, 0.2, -0.25);
+        } else {
+          torsoGroupRef.current.rotation.y = 0;
+          rightArmRef.current.rotation.set(
+            -0.62 + readyPulse * 0.03,
+            0.26,
+            -0.2
+          );
+          racketGroupRef.current.rotation.set(0.55, 0.18, -0.25);
+          leftArmRef.current.rotation.set(
+            -0.68 + readyPulse * 0.03,
+            -0.28,
+            0.28
+          );
+        }
       }
     }
   });
 
-  const skinColor = '#e0ac69';
+  // Modern Tour Color Palette
+  const skinColor = '#d99e69';
   const shirtColor = isOpponent ? '#1d4ed8' : '#ffffff';
+  const shirtAccentColor = isOpponent ? '#ffffff' : '#0284c7';
   const shortsColor = isOpponent ? '#0f172a' : '#f8fafc';
+  const shortsPipingColor = isOpponent ? '#38bdf8' : '#0284c7';
   const headbandColor = isOpponent ? '#ffffff' : '#00b4d8';
-  const hairColor = isOpponent ? '#3e2723' : '#b45309';
-  const racketFrameColor = isOpponent ? '#2563eb' : '#00b4d8';
+  const hairColor = isOpponent ? '#292524' : '#78350f';
+  const racketFrameColor = isOpponent ? '#1e40af' : '#0284c7';
 
   return (
     <group ref={groupRef} rotation={[0, isOpponent ? 0 : Math.PI, 0]}>
-      {/* Ground Contact Shadow */}
+      {/* Dynamic Court Ground Shadow */}
       <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.55, 24]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.36} />
+        <circleGeometry args={[0.58, 32]} />
+        <meshBasicMaterial color="#000000" transparent opacity={0.38} />
       </mesh>
 
       {/* ====================================================================
-          UNIFIED SKELETON ROOT: PELVIS / HIPS (Whole body articulates from here)
+          UNIFIED SKELETON ROOT: PELVIS / HIPS
           ==================================================================== */}
       <group ref={pelvisGroupRef} position={[0, 0.82, 0]}>
-        {/* Pelvis Core Sphere */}
-        <mesh position={[0, 0, 0]} castShadow>
-          <sphereGeometry args={[0.22, 20, 20]} />
-          <meshStandardMaterial color={shortsColor} roughness={0.6} />
+        {/* Core Pelvic Base */}
+        <mesh position={[0, 0.02, 0]} castShadow>
+          <sphereGeometry args={[0.22, 24, 24]} />
+          <meshStandardMaterial color={shortsColor} roughness={0.65} />
         </mesh>
-        {/* Left Shorts Leg */}
-        <mesh position={[-0.18, -0.08, 0]} castShadow>
-          <cylinderGeometry args={[0.13, 0.15, 0.22, 20]} />
-          <meshStandardMaterial color={shortsColor} roughness={0.6} />
+
+        {/* Elastic Waistband */}
+        <mesh position={[0, 0.12, 0]}>
+          <cylinderGeometry args={[0.21, 0.22, 0.05, 24]} />
+          <meshStandardMaterial color={shortsPipingColor} roughness={0.7} />
         </mesh>
-        {/* Right Shorts Leg */}
-        <mesh position={[0.18, -0.08, 0]} castShadow>
-          <cylinderGeometry args={[0.13, 0.15, 0.22, 20]} />
-          <meshStandardMaterial color={shortsColor} roughness={0.6} />
-        </mesh>
+
+        {/* Left Shorts Leg with Tour Flare */}
+        <group position={[-0.18, -0.08, 0]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.13, 0.155, 0.24, 24]} />
+            <meshStandardMaterial color={shortsColor} roughness={0.65} />
+          </mesh>
+          {/* Side Technical Contrast Piping */}
+          <mesh position={[-0.145, 0, 0]} rotation={[0, 0, 0.08]}>
+            <boxGeometry args={[0.018, 0.24, 0.05]} />
+            <meshStandardMaterial color={shortsPipingColor} roughness={0.5} />
+          </mesh>
+        </group>
+
+        {/* Right Shorts Leg with Tour Flare */}
+        <group position={[0.18, -0.08, 0]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.13, 0.155, 0.24, 24]} />
+            <meshStandardMaterial color={shortsColor} roughness={0.65} />
+          </mesh>
+          {/* Side Technical Contrast Piping */}
+          <mesh position={[0.145, 0, 0]} rotation={[0, 0, -0.08]}>
+            <boxGeometry args={[0.018, 0.24, 0.05]} />
+            <meshStandardMaterial color={shortsPipingColor} roughness={0.5} />
+          </mesh>
+        </group>
 
         {/* ====================================================================
-            1. TORSO & HEAD HIERARCHY (Attached directly to top of pelvis)
+            1. TORSO & HEAD HIERARCHY
             ==================================================================== */}
         <group ref={torsoGroupRef} position={[0, 0.16, 0]}>
-          {/* Athletic Torso / Shirt */}
+          {/* Athletic Torso / Fitted Tour Jersey */}
           <mesh position={[0, 0.22, 0]} castShadow>
-            <capsuleGeometry args={[0.21, 0.36, 16, 24]} />
+            <capsuleGeometry args={[0.215, 0.36, 20, 28]} />
             <meshStandardMaterial color={shirtColor} roughness={0.5} />
           </mesh>
 
-          {/* Polo Ribbed Collar */}
+          {/* Athletic Pectoral Muscle Contour */}
+          <mesh position={[-0.08, 0.28, 0.12]} rotation={[0.15, -0.1, 0]}>
+            <sphereGeometry args={[0.09, 16, 16]} />
+            <meshStandardMaterial color={shirtColor} roughness={0.5} />
+          </mesh>
+          <mesh position={[0.08, 0.28, 0.12]} rotation={[0.15, 0.1, 0]}>
+            <sphereGeometry args={[0.09, 16, 16]} />
+            <meshStandardMaterial color={shirtColor} roughness={0.5} />
+          </mesh>
+
+          {/* Technical Side Flank Panels */}
+          <mesh position={[-0.2, 0.2, 0]} rotation={[0, 0, 0.05]}>
+            <boxGeometry args={[0.035, 0.28, 0.14]} />
+            <meshStandardMaterial color={shirtAccentColor} roughness={0.6} />
+          </mesh>
+          <mesh position={[0.2, 0.2, 0]} rotation={[0, 0, -0.05]}>
+            <boxGeometry args={[0.035, 0.28, 0.14]} />
+            <meshStandardMaterial color={shirtAccentColor} roughness={0.6} />
+          </mesh>
+
+          {/* Ribbed Turn-Down Polo Collar */}
           <mesh position={[0, 0.46, 0]} rotation={[Math.PI / 2.3, 0, 0]}>
-            <torusGeometry args={[0.11, 0.02, 16, 24]} />
-            <meshStandardMaterial color={isOpponent ? '#ffffff' : '#e2e8f0'} />
+            <torusGeometry args={[0.115, 0.024, 16, 32]} />
+            <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
           </mesh>
 
-          {/* Left Rounded Shoulder Cap (Deltoid) */}
-          <mesh position={[-0.24, 0.38, 0]} castShadow>
-            <sphereGeometry args={[0.09, 16, 16]} />
-            <meshStandardMaterial color={shirtColor} roughness={0.5} />
+          {/* Front Button Placket & Buttons */}
+          <mesh position={[0, 0.38, 0.21]} rotation={[-0.1, 0, 0]}>
+            <boxGeometry args={[0.04, 0.12, 0.012]} />
+            <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
+          </mesh>
+          <mesh position={[0, 0.41, 0.22]}>
+            <sphereGeometry args={[0.008, 8, 8]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.3} />
+          </mesh>
+          <mesh position={[0, 0.36, 0.22]}>
+            <sphereGeometry args={[0.008, 8, 8]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.3} />
           </mesh>
 
-          {/* Right Rounded Shoulder Cap (Deltoid) */}
-          <mesh position={[0.24, 0.38, 0]} castShadow>
-            <sphereGeometry args={[0.09, 16, 16]} />
-            <meshStandardMaterial color={shirtColor} roughness={0.5} />
+          {/* Tour Athlete Chest Badge */}
+          <mesh position={[-0.1, 0.34, 0.2]}>
+            <cylinderGeometry args={[0.02, 0.02, 0.005, 16]} />
+            <meshStandardMaterial color={shirtAccentColor} metalness={0.6} roughness={0.3} />
           </mesh>
 
-          {/* Head & Neck Group (Pivots to track ball) */}
-          <group ref={headGroupRef} position={[0, 0.5, 0]}>
-            {/* Neck */}
-            <mesh position={[0, 0.04, 0]} castShadow>
-              <cylinderGeometry args={[0.075, 0.085, 0.14, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+          {/* Left Sleeve Trim & Rounded Deltoid Cap */}
+          <group position={[-0.25, 0.38, 0]}>
+            <mesh castShadow>
+              <sphereGeometry args={[0.095, 20, 20]} />
+              <meshStandardMaterial color={shirtColor} roughness={0.5} />
             </mesh>
-
-            {/* Head Cranium */}
-            <mesh position={[0, 0.2, 0]} castShadow>
-              <sphereGeometry args={[0.17, 24, 24]} />
-              <meshStandardMaterial color={skinColor} roughness={0.55} />
+            <mesh position={[-0.02, -0.05, 0]} rotation={[0, 0, 0.2]}>
+              <cylinderGeometry args={[0.088, 0.088, 0.025, 20]} />
+              <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
             </mesh>
+          </group>
 
-            {/* 3D Hair */}
-            <mesh position={[0, 0.25, -0.02]} castShadow>
-              <sphereGeometry args={[0.175, 20, 20]} />
-              <meshStandardMaterial color={hairColor} roughness={0.8} />
+          {/* Right Sleeve Trim & Rounded Deltoid Cap */}
+          <group position={[0.25, 0.38, 0]}>
+            <mesh castShadow>
+              <sphereGeometry args={[0.095, 20, 20]} />
+              <meshStandardMaterial color={shirtColor} roughness={0.5} />
             </mesh>
-
-            {/* Seamless Round Elastic Headband */}
-            <mesh position={[0, 0.22, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <torusGeometry args={[0.173, 0.022, 16, 32]} />
-              <meshStandardMaterial color={headbandColor} roughness={0.4} />
+            <mesh position={[0.02, -0.05, 0]} rotation={[0, 0, -0.2]}>
+              <cylinderGeometry args={[0.088, 0.088, 0.025, 20]} />
+              <meshStandardMaterial color={shirtAccentColor} roughness={0.4} />
             </mesh>
-
-            {/* Eyes (if opponent facing camera) */}
-            {isOpponent && (
-              <group position={[0, 0.2, 0.15]}>
-                <mesh position={[-0.055, 0, 0]}>
-                  <sphereGeometry args={[0.02, 12, 12]} />
-                  <meshStandardMaterial color="#0f172a" />
-                </mesh>
-                <mesh position={[0.055, 0, 0]}>
-                  <sphereGeometry args={[0.02, 12, 12]} />
-                  <meshStandardMaterial color="#0f172a" />
-                </mesh>
-              </group>
-            )}
           </group>
 
           {/* ====================================================================
-              2. ARTICULATED LEFT ARM (Pivots at shoulder)
+              HEAD, ATHLETIC FACE, HAIR & TOUR HEADBAND
+              ==================================================================== */}
+          <group ref={headGroupRef} position={[0, 0.5, 0]}>
+            {/* Muscular Neck */}
+            <mesh position={[0, 0.04, 0]} castShadow>
+              <cylinderGeometry args={[0.078, 0.088, 0.14, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
+            </mesh>
+
+            {/* Cranium & Sculpted Jawline */}
+            <mesh position={[0, 0.2, 0]} castShadow>
+              <sphereGeometry args={[0.17, 28, 28]} />
+              <meshStandardMaterial color={skinColor} roughness={0.55} />
+            </mesh>
+            <mesh position={[0, 0.12, 0.06]} castShadow>
+              <boxGeometry args={[0.13, 0.1, 0.12]} />
+              <meshStandardMaterial color={skinColor} roughness={0.55} />
+            </mesh>
+
+            {/* Nose Bridge */}
+            <mesh position={[0, 0.18, 0.18]} rotation={[0.2, 0, 0]}>
+              <coneGeometry args={[0.022, 0.06, 12]} />
+              <meshStandardMaterial color={skinColor} roughness={0.55} />
+            </mesh>
+
+            {/* Expressive Athletic Eyes */}
+            <group position={[0, 0.21, 0.155]}>
+              {/* Left Eye */}
+              <mesh position={[-0.055, 0, 0]}>
+                <sphereGeometry args={[0.022, 12, 12]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.2} />
+              </mesh>
+              <mesh position={[-0.055, 0, 0.015]}>
+                <sphereGeometry args={[0.012, 10, 10]} />
+                <meshStandardMaterial color="#1e293b" />
+              </mesh>
+              {/* Right Eye */}
+              <mesh position={[0.055, 0, 0]}>
+                <sphereGeometry args={[0.022, 12, 12]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.2} />
+              </mesh>
+              <mesh position={[0.055, 0, 0.015]}>
+                <sphereGeometry args={[0.012, 10, 10]} />
+                <meshStandardMaterial color="#1e293b" />
+              </mesh>
+            </group>
+
+            {/* Layered Textured Athletic Hair */}
+            <mesh position={[0, 0.26, -0.02]} castShadow>
+              <sphereGeometry args={[0.178, 24, 24]} />
+              <meshStandardMaterial color={hairColor} roughness={0.85} />
+            </mesh>
+            <mesh position={[0, 0.32, 0.03]} castShadow>
+              <sphereGeometry args={[0.13, 16, 16]} />
+              <meshStandardMaterial color={hairColor} roughness={0.85} />
+            </mesh>
+            <mesh position={[-0.12, 0.22, -0.02]} castShadow>
+              <sphereGeometry args={[0.07, 12, 12]} />
+              <meshStandardMaterial color={hairColor} roughness={0.85} />
+            </mesh>
+            <mesh position={[0.12, 0.22, -0.02]} castShadow>
+              <sphereGeometry args={[0.07, 12, 12]} />
+              <meshStandardMaterial color={hairColor} roughness={0.85} />
+            </mesh>
+
+            {/* Seamless Elastic Tour Headband */}
+            <mesh position={[0, 0.23, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <torusGeometry args={[0.175, 0.024, 16, 36]} />
+              <meshStandardMaterial color={headbandColor} roughness={0.35} />
+            </mesh>
+
+            {/* Bandana Knot & Fluttering Ribbons at Back of Head */}
+            <group ref={headbandRibbonRef} position={[0, 0.23, -0.18]}>
+              <mesh>
+                <sphereGeometry args={[0.025, 12, 12]} />
+                <meshStandardMaterial color={headbandColor} roughness={0.35} />
+              </mesh>
+              <mesh position={[-0.03, -0.08, -0.02]} rotation={[0.2, -0.1, -0.3]}>
+                <boxGeometry args={[0.024, 0.14, 0.006]} />
+                <meshStandardMaterial color={headbandColor} roughness={0.35} />
+              </mesh>
+              <mesh position={[0.03, -0.08, -0.02]} rotation={[0.25, 0.1, 0.3]}>
+                <boxGeometry args={[0.024, 0.14, 0.006]} />
+                <meshStandardMaterial color={headbandColor} roughness={0.35} />
+              </mesh>
+            </group>
+          </group>
+
+          {/* ====================================================================
+              2. ARTICULATED LEFT ARM & HAND (Holding / Tossing Ball)
               ==================================================================== */}
           <group ref={leftArmRef} position={[-0.25, 0.38, 0]}>
             {/* Left Bicep */}
             <mesh position={[-0.03, -0.14, 0.02]} rotation={[0.2, 0, 0.3]} castShadow>
-              <capsuleGeometry args={[0.055, 0.2, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.058, 0.2, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Left Elbow */}
+            {/* Left Elbow Joint */}
             <mesh position={[-0.05, -0.27, 0.04]}>
-              <sphereGeometry args={[0.052, 12, 12]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <sphereGeometry args={[0.054, 14, 14]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Left Forearm */}
             <mesh position={[-0.04, -0.38, 0.08]} rotation={[-0.3, 0, 0.1]} castShadow>
-              <capsuleGeometry args={[0.048, 0.18, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.05, 0.18, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Left Wristband */}
+            {/* Terrycloth Sweatband */}
             <mesh position={[-0.03, -0.46, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.05, 0.016, 12, 20]} />
-              <meshStandardMaterial color="#ffffff" />
+              <cylinderGeometry args={[0.054, 0.054, 0.045, 20]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.9} />
             </mesh>
-            {/* Left Hand */}
-            <mesh position={[-0.03, -0.51, 0.11]} castShadow>
-              <sphereGeometry args={[0.05, 12, 12]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
-            </mesh>
+            {/* Left Hand: Modeled Palm & Fingers for Holding/Releasing Ball */}
+            <group position={[-0.03, -0.51, 0.11]}>
+              <mesh castShadow>
+                <boxGeometry args={[0.055, 0.05, 0.025]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+              {/* Opposed Thumb */}
+              <mesh position={[0.025, 0.01, 0.015]} rotation={[0, 0.4, 0.2]}>
+                <capsuleGeometry args={[0.012, 0.03, 8, 8]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+              {/* Cupped Fingers */}
+              <mesh position={[-0.005, -0.032, 0.01]} rotation={[-0.3, 0, 0]}>
+                <boxGeometry args={[0.048, 0.035, 0.015]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+            </group>
           </group>
 
           {/* ====================================================================
-              3. ARTICULATED RIGHT ARM & RACKET (Pivots at shoulder)
+              3. ARTICULATED RIGHT ARM, HAND & PRO GRAPHITE RACKET
               ==================================================================== */}
           <group ref={rightArmRef} position={[0.25, 0.38, 0]}>
             {/* Right Bicep */}
             <mesh position={[0.03, -0.14, 0.04]} rotation={[-0.4, 0, -0.2]} castShadow>
-              <capsuleGeometry args={[0.058, 0.2, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.062, 0.2, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Right Elbow */}
+            {/* Right Elbow Joint */}
             <mesh position={[0.05, -0.27, 0.08]}>
-              <sphereGeometry args={[0.054, 12, 12]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <sphereGeometry args={[0.056, 14, 14]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
             {/* Right Forearm */}
             <mesh position={[0.04, -0.2, 0.22]} rotation={[-1.1, 0, 0.1]} castShadow>
-              <capsuleGeometry args={[0.05, 0.18, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.052, 0.18, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Right Wristband */}
+            {/* Terrycloth Sweatband */}
             <mesh position={[0.03, -0.13, 0.3]} rotation={[0.4, 0, 0]}>
-              <torusGeometry args={[0.052, 0.016, 12, 20]} />
-              <meshStandardMaterial color="#ffffff" />
+              <cylinderGeometry args={[0.056, 0.056, 0.045, 20]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.9} />
             </mesh>
-            {/* Right Hand gripping racket handle */}
-            <mesh position={[0.02, -0.08, 0.35]} castShadow>
-              <sphereGeometry args={[0.055, 12, 12]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
-            </mesh>
+            {/* Right Hand Wrapping Tightly Around Handle */}
+            <group position={[0.02, -0.08, 0.35]}>
+              <mesh castShadow>
+                <boxGeometry args={[0.058, 0.052, 0.028]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+              {/* Opposed Thumb wrapped around grip */}
+              <mesh position={[-0.028, 0.01, 0.015]} rotation={[0, -0.5, -0.3]}>
+                <capsuleGeometry args={[0.013, 0.034, 8, 8]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+              {/* Wrapped Fingers */}
+              <mesh position={[0.01, -0.02, 0.025]} rotation={[0.6, 0, 0]}>
+                <capsuleGeometry args={[0.018, 0.048, 8, 8]} />
+                <meshStandardMaterial color={skinColor} roughness={0.58} />
+              </mesh>
+            </group>
 
-            {/* RACKET GROUP */}
+            {/* PRO GRAPHITE TENNIS RACKET */}
             <group ref={racketGroupRef} position={[0.02, -0.06, 0.38]} rotation={[0.5, 0.2, -0.3]}>
-              {/* Butt Cap */}
-              <mesh position={[0, -0.16, 0]}>
-                <sphereGeometry args={[0.025, 12, 12]} />
-                <meshStandardMaterial color="#0f172a" />
-              </mesh>
-              {/* Grip Handle */}
-              <mesh position={[0, 0, 0]} castShadow>
-                <cylinderGeometry args={[0.02, 0.022, 0.32, 16]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.7} />
-              </mesh>
-              {/* Throat / Yoke */}
-              <mesh position={[0, 0.21, 0]} castShadow>
-                <cylinderGeometry args={[0.024, 0.018, 0.12, 12]} />
+              {/* Branded Butt Cap */}
+              <mesh position={[0, -0.165, 0]}>
+                <cylinderGeometry args={[0.026, 0.028, 0.02, 16]} />
                 <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.3} />
               </mesh>
-              {/* Oval Racket Hoop */}
-              <mesh position={[0, 0.44, 0]} scale={[1.0, 1.35, 1.0]} castShadow>
-                <torusGeometry args={[0.18, 0.016, 16, 32]} />
-                <meshStandardMaterial color={racketFrameColor} metalness={0.8} roughness={0.2} />
+
+              {/* Octagonal Handle with Overgrip Wrapping Ridges */}
+              <mesh position={[0, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.022, 0.024, 0.32, 16]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.8} />
               </mesh>
-              {/* String Bed */}
-              <mesh position={[0, 0.44, 0]} scale={[1.0, 1.35, 1.0]}>
-                <cylinderGeometry args={[0.17, 0.17, 0.005, 32]} />
-                <meshStandardMaterial color="#ffffff" transparent opacity={0.35} roughness={0.1} />
+              {/* Grip Finishing Tape */}
+              <mesh position={[0, 0.15, 0]}>
+                <cylinderGeometry args={[0.023, 0.023, 0.02, 16]} />
+                <meshStandardMaterial color="#0f172a" />
+              </mesh>
+
+              {/* Aerodynamic Open Split V-Throat (Dual-Prong Yoke) */}
+              <group position={[0, 0.24, 0]}>
+                {/* Left Prong */}
+                <mesh position={[-0.032, 0, 0]} rotation={[0, 0, -0.28]} castShadow>
+                  <cylinderGeometry args={[0.012, 0.014, 0.16, 12]} />
+                  <meshStandardMaterial color={racketFrameColor} metalness={0.85} roughness={0.2} />
+                </mesh>
+                {/* Right Prong */}
+                <mesh position={[0.032, 0, 0]} rotation={[0, 0, 0.28]} castShadow>
+                  <cylinderGeometry args={[0.012, 0.014, 0.16, 12]} />
+                  <meshStandardMaterial color={racketFrameColor} metalness={0.85} roughness={0.2} />
+                </mesh>
+                {/* Horizontal Bridge / Crossbar */}
+                <mesh position={[0, 0.065, 0]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.01, 0.01, 0.08, 12]} />
+                  <meshStandardMaterial color={racketFrameColor} metalness={0.85} roughness={0.2} />
+                </mesh>
+              </group>
+
+              {/* Elliptical Graphite Head Frame */}
+              <mesh position={[0, 0.48, 0]} scale={[1.0, 1.38, 1.0]} castShadow>
+                <torusGeometry args={[0.18, 0.016, 16, 36]} />
+                <meshStandardMaterial color={racketFrameColor} metalness={0.9} roughness={0.15} />
+              </mesh>
+
+              {/* Protective Bumper Guard Along Frame Tip */}
+              <mesh position={[0, 0.64, 0]} scale={[0.85, 0.35, 1.0]}>
+                <torusGeometry args={[0.18, 0.018, 12, 24, Math.PI]} />
+                <meshStandardMaterial color="#0f172a" roughness={0.7} />
+              </mesh>
+
+              {/* High-Tension String Bed */}
+              <mesh position={[0, 0.48, 0]} scale={[1.0, 1.38, 1.0]}>
+                <cylinderGeometry args={[0.17, 0.17, 0.004, 32]} />
+                <meshStandardMaterial color="#f8fafc" transparent opacity={0.4} roughness={0.1} />
               </mesh>
             </group>
           </group>
         </group>
 
         {/* ====================================================================
-            5. ARTICULATED LEFT LEG & SHOE (Strictly parallel track at X = -0.28m)
+            5. ARTICULATED LEFT LEG & PRO TOUR SNEAKER (Strictly Parallel Track)
             ==================================================================== */}
         <group ref={leftLegRef} position={[-0.28, -0.08, 0]}>
-          {/* Left Thigh */}
+          {/* Muscular Thigh */}
           <mesh position={[0, -0.16, 0]} castShadow>
-            <capsuleGeometry args={[0.075, 0.24, 12, 16]} />
-            <meshStandardMaterial color={skinColor} roughness={0.6} />
+            <capsuleGeometry args={[0.08, 0.25, 16, 20]} />
+            <meshStandardMaterial color={skinColor} roughness={0.58} />
           </mesh>
 
-          {/* Left Knee Joint Group */}
+          {/* Left Knee Group */}
           <group ref={leftKneeRef} position={[0, -0.32, 0]}>
-            {/* Left Knee Cap */}
-            <mesh position={[0, 0, 0]}>
-              <sphereGeometry args={[0.07, 14, 14]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+            {/* Patella Joint */}
+            <mesh position={[0, 0, 0.01]}>
+              <sphereGeometry args={[0.072, 16, 16]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Left Calf */}
+            {/* Muscular Calf */}
             <mesh position={[0, -0.16, 0]} castShadow>
-              <capsuleGeometry args={[0.068, 0.24, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.07, 0.25, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Left White Sock */}
-            <mesh position={[0, -0.3, 0]}>
-              <cylinderGeometry args={[0.068, 0.068, 0.12, 16]} />
-              <meshStandardMaterial color="#ffffff" roughness={0.8} />
-            </mesh>
-            {/* Left Tennis Shoe */}
+            {/* Crew Tennis Sock with Dual Stripes */}
+            <group position={[0, -0.3, 0]}>
+              <mesh>
+                <cylinderGeometry args={[0.07, 0.07, 0.13, 20]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.8} />
+              </mesh>
+              <mesh position={[0, 0.04, 0]}>
+                <torusGeometry args={[0.071, 0.005, 8, 24]} />
+                <meshStandardMaterial color={shirtAccentColor} />
+              </mesh>
+              <mesh position={[0, 0.02, 0]}>
+                <torusGeometry args={[0.071, 0.005, 8, 24]} />
+                <meshStandardMaterial color={shirtAccentColor} />
+              </mesh>
+            </group>
+
+            {/* Pro Tour Tennis Sneaker */}
             <group position={[0, -0.38, 0.04]}>
+              {/* Heel Counter */}
               <mesh position={[0, 0.02, -0.06]} castShadow>
-                <sphereGeometry args={[0.068, 14, 14]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.4} />
+                <sphereGeometry args={[0.07, 16, 16]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.35} />
               </mesh>
+              {/* Main Shoe Body & Forefoot */}
               <mesh position={[0, 0.02, 0.04]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <capsuleGeometry args={[0.064, 0.16, 14, 16]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.4} />
+                <capsuleGeometry args={[0.066, 0.16, 16, 20]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.35} />
               </mesh>
+              {/* Cushioned EVA Midsole */}
               <mesh position={[0, -0.02, 0.01]} rotation={[Math.PI / 2, 0, 0]}>
-                <capsuleGeometry args={[0.068, 0.18, 12, 16]} />
-                <meshStandardMaterial color="#64748b" roughness={0.8} />
+                <capsuleGeometry args={[0.07, 0.18, 14, 18]} />
+                <meshStandardMaterial color={shirtAccentColor} roughness={0.5} />
+              </mesh>
+              {/* Outsole Base / Herringbone Rubber */}
+              <mesh position={[0, -0.038, 0.01]} rotation={[Math.PI / 2, 0, 0]}>
+                <capsuleGeometry args={[0.072, 0.185, 12, 16]} />
+                <meshStandardMaterial color="#334155" roughness={0.9} />
+              </mesh>
+              {/* Tongue & Laces */}
+              <mesh position={[0, 0.055, 0.02]} rotation={[-0.4, 0, 0]}>
+                <boxGeometry args={[0.045, 0.08, 0.02]} />
+                <meshStandardMaterial color="#f1f5f9" roughness={0.5} />
               </mesh>
             </group>
           </group>
         </group>
 
         {/* ====================================================================
-            6. ARTICULATED RIGHT LEG & SHOE (Strictly parallel track at X = +0.28m)
+            6. ARTICULATED RIGHT LEG & PRO TOUR SNEAKER (Strictly Parallel Track)
             ==================================================================== */}
         <group ref={rightLegRef} position={[0.28, -0.08, 0]}>
-          {/* Right Thigh */}
+          {/* Muscular Thigh */}
           <mesh position={[0, -0.16, 0]} castShadow>
-            <capsuleGeometry args={[0.075, 0.24, 12, 16]} />
-            <meshStandardMaterial color={skinColor} roughness={0.6} />
+            <capsuleGeometry args={[0.08, 0.25, 16, 20]} />
+            <meshStandardMaterial color={skinColor} roughness={0.58} />
           </mesh>
 
-          {/* Right Knee Joint Group */}
+          {/* Right Knee Group */}
           <group ref={rightKneeRef} position={[0, -0.32, 0]}>
-            {/* Right Knee Cap */}
-            <mesh position={[0, 0, 0]}>
-              <sphereGeometry args={[0.07, 14, 14]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+            {/* Patella Joint */}
+            <mesh position={[0, 0, 0.01]}>
+              <sphereGeometry args={[0.072, 16, 16]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Right Calf */}
+            {/* Muscular Calf */}
             <mesh position={[0, -0.16, 0]} castShadow>
-              <capsuleGeometry args={[0.068, 0.24, 12, 16]} />
-              <meshStandardMaterial color={skinColor} roughness={0.6} />
+              <capsuleGeometry args={[0.07, 0.25, 16, 20]} />
+              <meshStandardMaterial color={skinColor} roughness={0.58} />
             </mesh>
-            {/* Right White Sock */}
-            <mesh position={[0, -0.3, 0]}>
-              <cylinderGeometry args={[0.068, 0.068, 0.12, 16]} />
-              <meshStandardMaterial color="#ffffff" roughness={0.8} />
-            </mesh>
-            {/* Right Tennis Shoe */}
+            {/* Crew Tennis Sock with Dual Stripes */}
+            <group position={[0, -0.3, 0]}>
+              <mesh>
+                <cylinderGeometry args={[0.07, 0.07, 0.13, 20]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.8} />
+              </mesh>
+              <mesh position={[0, 0.04, 0]}>
+                <torusGeometry args={[0.071, 0.005, 8, 24]} />
+                <meshStandardMaterial color={shirtAccentColor} />
+              </mesh>
+              <mesh position={[0, 0.02, 0]}>
+                <torusGeometry args={[0.071, 0.005, 8, 24]} />
+                <meshStandardMaterial color={shirtAccentColor} />
+              </mesh>
+            </group>
+
+            {/* Pro Tour Tennis Sneaker */}
             <group position={[0, -0.38, 0.04]}>
+              {/* Heel Counter */}
               <mesh position={[0, 0.02, -0.06]} castShadow>
-                <sphereGeometry args={[0.068, 14, 14]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.4} />
+                <sphereGeometry args={[0.07, 16, 16]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.35} />
               </mesh>
+              {/* Main Shoe Body & Forefoot */}
               <mesh position={[0, 0.02, 0.04]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <capsuleGeometry args={[0.064, 0.16, 14, 16]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.4} />
+                <capsuleGeometry args={[0.066, 0.16, 16, 20]} />
+                <meshStandardMaterial color="#ffffff" roughness={0.35} />
               </mesh>
+              {/* Cushioned EVA Midsole */}
               <mesh position={[0, -0.02, 0.01]} rotation={[Math.PI / 2, 0, 0]}>
-                <capsuleGeometry args={[0.068, 0.18, 12, 16]} />
-                <meshStandardMaterial color="#64748b" roughness={0.8} />
+                <capsuleGeometry args={[0.07, 0.18, 14, 18]} />
+                <meshStandardMaterial color={shirtAccentColor} roughness={0.5} />
+              </mesh>
+              {/* Outsole Base / Herringbone Rubber */}
+              <mesh position={[0, -0.038, 0.01]} rotation={[Math.PI / 2, 0, 0]}>
+                <capsuleGeometry args={[0.072, 0.185, 12, 16]} />
+                <meshStandardMaterial color="#334155" roughness={0.9} />
+              </mesh>
+              {/* Tongue & Laces */}
+              <mesh position={[0, 0.055, 0.02]} rotation={[-0.4, 0, 0]}>
+                <boxGeometry args={[0.045, 0.08, 0.02]} />
+                <meshStandardMaterial color="#f1f5f9" roughness={0.5} />
               </mesh>
             </group>
           </group>

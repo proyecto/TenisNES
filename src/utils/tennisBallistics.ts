@@ -8,6 +8,7 @@ export interface HitParameters {
   targetZ: number; // Opponent court depth (e.g. -8m to -11m)
   targetX?: number; // Target lateral placement
   steeringX?: number; // Player input steer: -1 (left), 0 (center), +1 (right)
+  steeringZ?: number; // Depth steer: +1 (adelante / fuerte), -1 (atrás / floja y corta), 0 (neutral)
   isServe?: boolean;
   shotType?: 'drive' | 'backhand' | 'smash';
 }
@@ -77,6 +78,7 @@ export function calculateShotVelocity({
   targetZ,
   targetX = 0,
   steeringX = 0,
+  steeringZ = 0,
   isServe = false,
   shotType = 'drive',
 }: HitParameters): ShotVelocity {
@@ -103,10 +105,10 @@ export function calculateShotVelocity({
 
     if (num > 0.05 && den > 0.01) {
       tLand = Math.sqrt(num / den);
-      tLand = Math.max(0.55, Math.min(1.0, tLand));
+      tLand = Math.max(0.65, Math.min(1.15, tLand));
       vy = (yLand - y0 + 0.5 * GRAVITY * tLand * tLand) / tLand;
     } else {
-      const speedZ = 22.0;
+      const speedZ = 19.5;
       tLand = absDzTotal / speedZ;
       const tNet = tLand * alpha;
       vy = (yNetTarget - y0 + 0.5 * GRAVITY * tNet * tNet) / Math.max(0.1, tNet);
@@ -118,22 +120,38 @@ export function calculateShotVelocity({
     return { x: vx, y: vy, z: vz };
   }
 
-  // 2. Regular rally shots: DRIVE vs BACKHAND (REVÉS)
-  // Drive: más rápido, más fuerte y con más ángulo
-  // Revés (2 manos): más recto, menos fuerte
+  // 2. Regular rally shots: DRIVE (Right hand) vs BACKHAND (Revés / Left side)
   const isDrive = shotType === 'drive';
 
-  const speedZ = isDrive ? 22.5 : 16.5; // Drive is faster and stronger
+  // Base speed & depth modulated by steeringZ:
+  // - Right hand Forehand (Drive): visibly more speed, power and offensive whip
+  // - Left side Backhand (Revés): noticeably softer, controlled and defensive pace
+  let speedZ = isDrive ? 17.5 : 13.5;
+  let effectiveTargetZ = targetZ;
+  let clearance = isDrive ? 1.20 : 1.32;
+
+  if (steeringZ > 0) {
+    // Adelante: Tiro potente y profundo
+    speedZ = isDrive ? 21.5 : 16.5;
+    effectiveTargetZ = isMovingForward ? -10.5 : 10.5;
+    clearance = isDrive ? 1.05 : 1.15;
+  } else if (steeringZ < 0) {
+    // Atrás: Dejada floja cerca de la red
+    speedZ = isDrive ? 11.5 : 9.0;
+    effectiveTargetZ = isMovingForward ? -3.0 : 3.0;
+    clearance = 1.38;
+  }
+
   const vz = isMovingForward ? -speedZ : speedZ;
   const timeToNet = Math.abs(z0 - NET_Z) / speedZ;
-  const totalFlightTime = Math.abs(z0 - targetZ) / speedZ;
+  const totalFlightTime = Math.abs(z0 - effectiveTargetZ) / speedZ;
 
-  const clearance = isDrive ? 1.20 : 1.32;
   const requiredVyForNet =
     (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
-  const vy = Math.max(requiredVyForNet, 3.8);
+  const vy = Math.max(requiredVyForNet, steeringZ < 0 ? 2.8 : 3.6);
 
-  // Drive allows sharper angled steering (3.6) vs Backhand straighter trajectory (2.0)
+  // Lateral steering:
+  // Forehand (Drive) generates sharper cross-court angles (3.6) vs Backhand (2.0)
   const steerMultiplier = isDrive ? 3.6 : 2.0;
   const effectiveTargetX = targetX + steeringX * steerMultiplier;
   const vx = (effectiveTargetX - x0) / Math.max(0.1, totalFlightTime);

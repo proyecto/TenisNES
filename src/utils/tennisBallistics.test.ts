@@ -53,6 +53,34 @@ describe('tennisBallistics', () => {
     expect(Math.abs(driveShot.x)).toBeGreaterThan(Math.abs(backhandShot.x));
   });
 
+  it('modulates shot strength and depth with steeringZ (forward strong vs backward soft drop)', () => {
+    const neutralShot = calculateShotVelocity({
+      fromPos: [0, 1.0, 10.0],
+      targetZ: -9.0,
+      steeringZ: 0,
+      shotType: 'drive',
+    });
+
+    const forwardHardShot = calculateShotVelocity({
+      fromPos: [0, 1.0, 10.0],
+      targetZ: -9.0,
+      steeringZ: 1, // Adelante: más fuerte y profunda
+      shotType: 'drive',
+    });
+
+    const backwardDropShot = calculateShotVelocity({
+      fromPos: [0, 1.0, 10.0],
+      targetZ: -9.0,
+      steeringZ: -1, // Atrás: más floja, corta cerca de la red
+      shotType: 'drive',
+    });
+
+    // Forward shot is faster than neutral
+    expect(Math.abs(forwardHardShot.z)).toBeGreaterThan(Math.abs(neutralShot.z));
+    // Backward drop shot is slower and softer than neutral
+    expect(Math.abs(backwardDropShot.z)).toBeLessThan(Math.abs(neutralShot.z));
+  });
+
   it('evaluates asymmetric oval hit reach for right side drive and left side backhand', () => {
     const playerPos: [number, number, number] = [0, 0, 10.0];
 

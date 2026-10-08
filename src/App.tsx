@@ -71,7 +71,7 @@ export const App: React.FC = () => {
           return {
             badge: '¡SMASH DE SAQUE!',
             color: '#ffea00',
-            text: 'Smash de saque: pulsa [ESPACIO] con la raqueta arriba para rematar de arriba abajo • Dirige con A/D',
+            text: 'Smash de saque: pulsa [ESPACIO] con raqueta arriba • [W]: Profundo y potente • [S]: Corto • [A/D]: Dirigir',
           };
         } else {
           return {
@@ -84,7 +84,7 @@ export const App: React.FC = () => {
         return {
           badge: 'EN JUEGO',
           color: '#00e5ff',
-          text: 'Drive a 1 mano por la derecha (fuerte y abierto) • Revés a 2 manos por la izquierda • Pulsa [ESPACIO]',
+          text: 'Golpea con [ESPACIO] (el jugador frena para golpear) • [W]: Tiro potente y profundo • [S]: Dejada corta cerca de red • [A/D]: Ángulo',
         };
       case 'point_over':
         return {

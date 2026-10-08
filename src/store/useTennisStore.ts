@@ -26,10 +26,12 @@ export interface ScoreState {
   p1SwingTrigger: number;
   p1ShotType: 'drive' | 'backhand' | 'smash';
   cpuShotType: 'drive' | 'backhand' | 'smash';
+  serveTossTime: number;
 }
 
 interface TennisStore extends ScoreState {
   setMatchStatus: (status: ScoreState['matchStatus']) => void;
+  setServeTossTime: (time: number) => void;
   incrementRally: () => void;
   resetPoint: () => void;
   awardPoint: (winner: 'p1' | 'cpu', isAce?: boolean) => void;
@@ -69,8 +71,10 @@ export const useTennisStore = create<TennisStore>((set) => ({
   p1SwingTrigger: 0,
   p1ShotType: 'drive',
   cpuShotType: 'drive',
+  serveTossTime: 0,
 
   setMatchStatus: (status) => set({ matchStatus: status }),
+  setServeTossTime: (time) => set({ serveTossTime: time }),
   incrementRally: () => set((state) => ({ rallyCount: state.rallyCount + 1 })),
   resetPoint: () => set({ rallyCount: 0 }),
   setLastCall: (call, color = '#ccff00') => set({ lastCall: call, lastCallColor: color }),
