@@ -95,9 +95,9 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       if (pointOverEnteredTime.current === 0) {
         pointOverEnteredTime.current = t;
       }
-      // Zero out ball velocity during inter-point announcement
-      ballBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      ballBodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      // Gently decelerate ball rolling naturally on the grass during celebration
+      const curV = ballBodyRef.current.linvel();
+      ballBodyRef.current.setLinvel({ x: curV.x * 0.92, y: curV.y, z: curV.z * 0.92 }, true);
 
       // After 1.4 seconds of display, automatically reset serve for next point!
       if (t - pointOverEnteredTime.current >= 1.4) {
@@ -531,37 +531,30 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
       if (!pointResolved.current && currentHitter) {
         // CASE A: The ball has ALREADY bounced legally in opponent's court
-        // (Player A fulfilled their duty! If Player B does not return it, Player A wins the point!)
+        // Wait until the ball takes its SECOND BOUNCE or IMPACTS THE STANDS/WALLS!
+        // This ensures the point is never called abruptly mid-air, allowing the ball to complete its natural flight.
         if (shotLegalBounceOccurred.current) {
           const isAce = isServeShot.current && serveLandedInBox.current;
 
-          // 1. Has the ball passed the receiver or baseline? (Receiver failed to return)
-          const hasPassedCpu =
-            currentHitter === 'p1' &&
-            (ballPos.z < -12.8 || (ballPos.z < cpuPos[2] - 0.7 && ballVel.z < 0));
-          const hasPassedP1 =
-            currentHitter === 'cpu' &&
-            (ballPos.z > 12.8 || (ballPos.z > p1[2] + 0.7 && ballVel.z > 0));
+          // 1. Second bounce occurred anywhere (el segundo bote en el suelo):
+          const isSecondBounce = bouncesSinceHit.current >= 2;
 
-          // 2. Has the ball angled wide past sidelines after bouncing in?
-          const isPastSidelines = Math.abs(ballPos.x) > 5.2;
+          // 2. Impacted the stands, rear perimeter wall, or side barriers:
+          // (North/South back perimeter barrier is at Z = ±15.5m; East/West side stands are at X = ±12.7m)
+          const hasHitStandsOrWall =
+            Math.abs(ballPos.z) >= 15.2 ||
+            Math.abs(ballPos.x) >= 9.5;
 
-          // 3. Has the ball flown into the stands, barriers, or crowd area?
-          const isInStandsOrBarriers = Math.abs(ballPos.z) > 13.0 || Math.abs(ballPos.x) > 5.5;
-
-          // 4. Double bounce anywhere on court:
-          const isDoubleBounce = bouncesSinceHit.current >= 2;
-
-          if (hasPassedCpu || hasPassedP1 || isPastSidelines || isInStandsOrBarriers || isDoubleBounce) {
+          if (isSecondBounce || hasHitStandsOrWall) {
             pointResolved.current = true;
             awardPoint(currentHitter, isAce);
           }
         } else {
           // CASE B: The ball NEVER bounced legally in opponent's court
-          // (Flew directly out of bounds, into stands, or into netting without bouncing in)
+          // (Flew directly out of bounds or into stands without bouncing on the court)
           const isOutOfBoundsDirectly =
-            Math.abs(ballPos.z) > 12.5 ||
-            (Math.abs(ballPos.z) > 1.0 && Math.abs(ballPos.x) > 4.6) ||
+            Math.abs(ballPos.z) >= 15.0 ||
+            (Math.abs(ballPos.z) > 1.0 && Math.abs(ballPos.x) >= 8.5) ||
             ballPos.y < -0.5;
 
           if (isOutOfBoundsDirectly) {
