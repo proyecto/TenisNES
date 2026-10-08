@@ -27,6 +27,16 @@ export interface ScoreState {
   p1ShotType: 'drive' | 'backhand' | 'smash';
   cpuShotType: 'drive' | 'backhand' | 'smash';
   serveTossTime: number;
+  lastSpeedKmh: number;
+  lastSpeedMph: number;
+  lastSpeedLabel: string;
+  lastSpeedHitter: 'p1' | 'cpu' | null;
+  maxServeSpeedP1: number;
+  maxServeSpeedCpu: number;
+  lastBouncePos: [number, number] | null;
+  lastBounceInBounds: boolean | null;
+  lastBounceDistanceCm: number | null;
+  lastBounceTime: number;
 }
 
 interface TennisStore extends ScoreState {
@@ -44,6 +54,8 @@ interface TennisStore extends ScoreState {
   triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash') => void;
   triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash') => void;
   resetServe: () => void;
+  recordShotSpeed: (speedKmh: number, label: string, hitter: 'p1' | 'cpu', isServe?: boolean) => void;
+  recordBounceLocation: (x: number, z: number, inBounds: boolean, distanceCm: number, timestamp: number) => void;
 }
 
 export const useTennisStore = create<TennisStore>((set) => ({
@@ -72,6 +84,39 @@ export const useTennisStore = create<TennisStore>((set) => ({
   p1ShotType: 'drive',
   cpuShotType: 'drive',
   serveTossTime: 0,
+  lastSpeedKmh: 0,
+  lastSpeedMph: 0,
+  lastSpeedLabel: '',
+  lastSpeedHitter: null,
+  maxServeSpeedP1: 0,
+  maxServeSpeedCpu: 0,
+  lastBouncePos: null,
+  lastBounceInBounds: null,
+  lastBounceDistanceCm: null,
+  lastBounceTime: 0,
+
+  recordShotSpeed: (speedKmh, label, hitter, isServe = false) =>
+    set((state) => {
+      const speedMph = Math.round(speedKmh * 0.621371);
+      const newMaxP1 = isServe && hitter === 'p1' ? Math.max(state.maxServeSpeedP1, speedKmh) : state.maxServeSpeedP1;
+      const newMaxCpu = isServe && hitter === 'cpu' ? Math.max(state.maxServeSpeedCpu, speedKmh) : state.maxServeSpeedCpu;
+      return {
+        lastSpeedKmh: speedKmh,
+        lastSpeedMph: speedMph,
+        lastSpeedLabel: label,
+        lastSpeedHitter: hitter,
+        maxServeSpeedP1: newMaxP1,
+        maxServeSpeedCpu: newMaxCpu,
+      };
+    }),
+
+  recordBounceLocation: (x, z, inBounds, distanceCm, timestamp) =>
+    set({
+      lastBouncePos: [x, z],
+      lastBounceInBounds: inBounds,
+      lastBounceDistanceCm: distanceCm,
+      lastBounceTime: timestamp,
+    }),
 
   setMatchStatus: (status) => set({ matchStatus: status }),
   setServeTossTime: (time) => set({ serveTossTime: time }),

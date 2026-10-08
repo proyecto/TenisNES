@@ -220,6 +220,18 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
           ballBodyRef.current.setLinvel(shot, true);
           ballBodyRef.current.setAngvel({ x: 10 + recorridoFactor * 6, y: steeringX * -3, z: 0 }, true);
+
+          // Record serve speed in km/h for TV radar
+          const speedMs = Math.hypot(shot.x, shot.y, shot.z);
+          const speedKmh = Math.round(speedMs * 3.6);
+          const isAcePower = speedKmh >= 195;
+          useTennisStore.getState().recordShotSpeed(
+            speedKmh,
+            isAcePower ? '¡SAQUE AS CAÑÓN!' : '1º SAQUE PLANO',
+            'p1',
+            true
+          );
+
           useTennisStore.getState().triggerP1Swing('smash');
           setLastHitter('p1');
           setMatchStatus('playing');
@@ -254,6 +266,17 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
           ballBodyRef.current.setLinvel(cpuServeShot, true);
           ballBodyRef.current.setAngvel({ x: -14, y: 0, z: 0 }, true);
+
+          // Record CPU serve speed for TV radar
+          const cpuSpeedMs = Math.hypot(cpuServeShot.x, cpuServeShot.y, cpuServeShot.z);
+          const cpuSpeedKmh = Math.round(cpuSpeedMs * 3.6);
+          useTennisStore.getState().recordShotSpeed(
+            cpuSpeedKmh,
+            '1º SERVICIO CPU',
+            'cpu',
+            true
+          );
+
           useTennisStore.getState().triggerCpuSwing('smash');
           setLastHitter('cpu');
           setMatchStatus('playing');
@@ -318,6 +341,23 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         const spinY = steeringX * (shotType === 'drive' ? -5 : -2);
         ballBodyRef.current.setAngvel({ x: spinX, y: spinY, z: 0 }, true);
 
+        // Record P1 rally shot speed for TV radar
+        const p1SpeedMs = Math.hypot(shot.x, shot.y, shot.z);
+        const p1SpeedKmh = Math.round(p1SpeedMs * 3.6);
+        const p1Label =
+          shotType === 'drive'
+            ? steeringZ > 0
+              ? 'DRIVE POTENTE 1-MANO'
+              : steeringZ < 0
+              ? 'DEJADA CORTA'
+              : 'DRIVE A 1 MANO'
+            : steeringZ > 0
+            ? 'REVÉS PLANO 2-MANOS'
+            : steeringZ < 0
+            ? 'DEJADA DE REVÉS'
+            : 'REVÉS A 2 MANOS';
+        useTennisStore.getState().recordShotSpeed(p1SpeedKmh, p1Label, 'p1', false);
+
         setLastHitter('p1');
         incrementRally();
         lastHitTime.current = t;
@@ -362,6 +402,13 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
         ballBodyRef.current.setLinvel(cpuShot, true);
         ballBodyRef.current.setAngvel({ x: shotType === 'drive' ? -10 : -6, y: preferredSide * 3, z: 0 }, true);
+
+        // Record CPU rally shot speed for TV radar
+        const cpuRallySpeedMs = Math.hypot(cpuShot.x, cpuShot.y, cpuShot.z);
+        const cpuRallySpeedKmh = Math.round(cpuRallySpeedMs * 3.6);
+        const cpuLabel = shotType === 'drive' ? 'DRIVE CPU' : 'REVÉS A 2 MANOS CPU';
+        useTennisStore.getState().recordShotSpeed(cpuRallySpeedKmh, cpuLabel, 'cpu', false);
+
         useTennisStore.getState().triggerCpuSwing(shotType);
         setLastHitter('cpu');
         incrementRally();
@@ -384,6 +431,14 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
         const hitter = useTennisStore.getState().lastHitter;
 
+        // Calculate distance to nearest legal court line for Hawk-Eye display
+        const distSideline = Math.abs(Math.abs(ballPos.x) - 4.115);
+        const distBaseline = Math.abs(Math.abs(ballPos.z) - 11.885);
+        const distService = Math.abs(Math.abs(ballPos.z) - 6.40);
+        const distCenter = Math.abs(ballPos.z) <= 6.40 ? Math.abs(ballPos.x) : 999;
+        const minDist = Math.min(distSideline, distBaseline, distService, distCenter);
+        const distanceCm = Math.round(minDist * 100 * 10) / 10;
+
         // 5a. First Bounce Check (Line In / Out / Service Box / Let)
         if (bouncesSinceHit.current === 1 && !pointResolved.current && hitter) {
           const evaluation = evaluateBounce({
@@ -393,6 +448,15 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             serveSide,
             hitter,
           });
+
+          // Record bounce location in store for Hawk-Eye television graphics
+          useTennisStore.getState().recordBounceLocation(
+            ballPos.x,
+            ballPos.z,
+            evaluation.isInBounds && !evaluation.isFault,
+            distanceCm,
+            t
+          );
 
           // Check Service Let (ITF Rule 22: touches net and lands in legal box)
           if (isServeShot.current && serveTouchedNet.current && evaluation.isInBounds && !evaluation.isFault) {
@@ -440,31 +504,74 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         }
       }
     }
+
+    // Update Ground Shadow Disk position and depth scale directly at 60 FPS
+    if (shadowMeshRef.current) {
+      shadowMeshRef.current.position.set(ballPos.x, 0.014, ballPos.z);
+      const height = Math.max(0, ballPos.y - 0.085);
+      const radius = Math.max(0.12, Math.min(0.38, 0.16 + height * 0.06));
+      shadowMeshRef.current.scale.set(radius, radius, 1);
+    }
   });
 
+  const shadowMeshRef = useRef<Mesh>(null);
+  const lastBounce = useTennisStore((state) => state.lastBouncePos);
+  const lastBounceInBounds = useTennisStore((state) => state.lastBounceInBounds);
+  const lastBounceDistanceCm = useTennisStore((state) => state.lastBounceDistanceCm);
+
   return (
-    <RigidBody
-      ref={ballBodyRef}
-      colliders="ball"
-      restitution={0.82}
-      friction={0.65}
-      linearDamping={0.02}
-      angularDamping={0.1}
-      onCollisionEnter={() => {
-        onBounce?.();
-      }}
-    >
-      {/* 3D Tennis Ball Sphere */}
-      <mesh ref={ballMeshRef} castShadow>
-        <sphereGeometry args={[0.085, 32, 32]} />
-        <meshStandardMaterial
-          color="#ccff00"
-          roughness={0.65}
-          metalness={0.05}
-          emissive="#ccff00"
-          emissiveIntensity={0.12}
-        />
+    <>
+      {/* Dynamic 3D Ground Shadow Disk (Depth perception & bounce timing indicator) */}
+      <mesh ref={shadowMeshRef} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[1, 32]} />
+        <meshBasicMaterial color="#000000" transparent opacity={0.42} />
       </mesh>
-    </RigidBody>
+
+      {/* 3D Chalk Mark & Concentric Hawk-Eye Bounce Ring */}
+      {lastBounce && (
+        <group position={[lastBounce[0], 0.016, lastBounce[1]]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.07, 16]} />
+            <meshBasicMaterial
+              color={lastBounceDistanceCm !== null && lastBounceDistanceCm < 5.0 ? '#ffffff' : '#0f3a1f'}
+              transparent
+              opacity={0.7}
+            />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.07, 0.11, 24]} />
+            <meshBasicMaterial
+              color={lastBounceInBounds ? '#ccff00' : '#f43f5e'}
+              transparent
+              opacity={0.65}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {/* Physics RigidBody with 3D High-Visibility Tennis Ball */}
+      <RigidBody
+        ref={ballBodyRef}
+        colliders="ball"
+        restitution={0.82}
+        friction={0.65}
+        linearDamping={0.02}
+        angularDamping={0.1}
+        onCollisionEnter={() => {
+          onBounce?.();
+        }}
+      >
+        <mesh ref={ballMeshRef} castShadow>
+          <sphereGeometry args={[0.085, 32, 32]} />
+          <meshStandardMaterial
+            color="#ccff00"
+            roughness={0.65}
+            metalness={0.05}
+            emissive="#ccff00"
+            emissiveIntensity={0.12}
+          />
+        </mesh>
+      </RigidBody>
+    </>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useLayoutEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { WimbledonScoreboard3D } from './WimbledonScoreboard3D';
 
 /**
  * British Tournament Stadium Atmosphere:
@@ -590,29 +591,17 @@ export const StadiumAtmosphere3D: React.FC = () => {
           <boxGeometry args={[25.4, 1.4, 0.3]} />
           <meshStandardMaterial color="#18181b" roughness={0.8} />
         </mesh>
-        <mesh position={[0, 7.6, -25.0]}>
-          <boxGeometry args={[25.4, 0.08, 0.08]} />
+        {/* Gold railing along the left/center section of the top wall (stops cleanly before the scoreboard) */}
+        <mesh position={[-4.0, 7.6, -25.0]}>
+          <boxGeometry args={[17.4, 0.08, 0.08]} />
           <meshStandardMaterial color="#ca8a04" metalness={0.7} />
         </mesh>
 
-        {/* ELECTRONIC TOURNAMENT SCOREBOARD */}
-        <group position={[9.5, 7.8, -24.8]}>
-          <mesh>
-            <boxGeometry args={[6.8, 2.6, 0.35]} />
-            <meshStandardMaterial color="#064e3b" roughness={0.5} />
-          </mesh>
-          <mesh position={[0, 0, 0.18]}>
-            <planeGeometry args={[6.4, 2.2]} />
-            <meshStandardMaterial color="#022c22" emissive="#053b2d" emissiveIntensity={0.6} />
-          </mesh>
-          <mesh position={[0, 0.85, 0.2]}>
-            <planeGeometry args={[5.8, 0.4]} />
-            <meshStandardMaterial color="#16a34a" />
-          </mesh>
-        </group>
+        {/* AUTHENTIC WIMBLEDON ELECTRONIC COURT SCOREBOARD */}
+        <WimbledonScoreboard3D position={[10.2, 9.4, -24.2]} rotation={[0.07, -0.19, 0]} scale={1.2} />
 
-        {/* Tournament Flags fluttering along the top rear wall */}
-        {[-10, -5, 0, 5].map((flagX, idx) => (
+        {/* Tournament Flags fluttering along the top rear wall (left/center only to keep scoreboard completely clear) */}
+        {[-11, -7, -3].map((flagX, idx) => (
           <group key={`top-flag-${idx}`} position={[flagX, 7.5, -25.0]}>
             <mesh position={[0, 0.8, 0]}>
               <cylinderGeometry args={[0.03, 0.03, 1.8, 8]} />
