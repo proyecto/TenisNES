@@ -37,6 +37,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
   const isServeShot = useRef(false);
   const serveTouchedNet = useRef(false);
   const serveLandedInBox = useRef(false);
+  const shotLegalBounceOccurred = useRef(false);
+  const collisionTriggeredBounce = useRef(false);
   const pointOverEnteredTime = useRef(0);
   const p1SwingAttemptTime = useRef(0);
 
@@ -56,6 +58,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       isServeShot.current = false;
       serveTouchedNet.current = false;
       serveLandedInBox.current = false;
+      shotLegalBounceOccurred.current = false;
+      collisionTriggeredBounce.current = false;
       hasLaunchedToss.current = false;
       pointOverEnteredTime.current = 0;
       p1SwingAttemptTime.current = 0;
@@ -240,6 +244,9 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           pointResolved.current = false;
           isServeShot.current = true;
           serveTouchedNet.current = false;
+          serveLandedInBox.current = false;
+          shotLegalBounceOccurred.current = false;
+          collisionTriggeredBounce.current = false;
           return;
         }
 
@@ -285,6 +292,9 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           pointResolved.current = false;
           isServeShot.current = true;
           serveTouchedNet.current = false;
+          serveLandedInBox.current = false;
+          shotLegalBounceOccurred.current = false;
+          collisionTriggeredBounce.current = false;
           return;
         }
 
@@ -364,6 +374,10 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         bouncesSinceHit.current = 0;
         pointResolved.current = false;
         isServeShot.current = false;
+        serveTouchedNet.current = false;
+        serveLandedInBox.current = false;
+        shotLegalBounceOccurred.current = false;
+        collisionTriggeredBounce.current = false;
       }
 
       // =======================================================================
@@ -416,18 +430,49 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         bouncesSinceHit.current = 0;
         pointResolved.current = false;
         isServeShot.current = false;
+        serveTouchedNet.current = false;
+        serveLandedInBox.current = false;
+        shotLegalBounceOccurred.current = false;
+        collisionTriggeredBounce.current = false;
       }
 
       // =======================================================================
       // 5. BOUNCE EVALUATION & TENNIS COURT BOUNDARIES (IN / OUT / FAULT / LET)
       // =======================================================================
-      const isGroundContact = ballPos.y <= 0.16 && ballVel.y <= 0.2;
-      const isDebouncedBounce = t - lastBounceTime.current > 0.22;
+      const isGroundContact =
+        (ballPos.y <= 0.22 && ballVel.y <= 0.6) || collisionTriggeredBounce.current;
+      const isDebouncedBounce = t - lastBounceTime.current > 0.18;
 
       if (isGroundContact && isDebouncedBounce) {
         lastBounceTime.current = t;
+        collisionTriggeredBounce.current = false;
         bouncesSinceHit.current += 1;
         onBounce?.();
+
+        // DYNAMIC TENNIS BOUNCE LIFT (First Bounce):
+        // Rebounds ball upward to an athletic, natural strike height (waist to chest: 1.15m - 1.45m)
+        if (bouncesSinceHit.current === 1) {
+          const horizSpeed = Math.hypot(ballVel.x, ballVel.z);
+          const isDropShot = horizSpeed < 12.0;
+          const isServe = isServeShot.current;
+
+          // Rebound vertical speed:
+          // - Normal Rally / Drive: vy = 5.15 m/s -> Apex h = 5.15^2 / (2 * 9.81) = 1.35m (Waist/Chest height!)
+          // - Fast Serve: vy = 5.40 m/s -> Apex h = 5.40^2 / (2 * 9.81) = 1.48m (High Chest kick!)
+          // - Drop Shot (dejada corta): vy = 3.85 m/s -> Apex h = 3.85^2 / (2 * 9.81) = 0.75m (Knee height, dies quickly)
+          const targetReboundVy = isServe ? 5.40 : isDropShot ? 3.85 : 5.15;
+
+          // Maintain horizontal forward trajectory with realistic turf traction (~78% speed retention)
+          const speedRetention = isDropShot ? 0.65 : 0.78;
+          const newVx = ballVel.x * speedRetention;
+          const newVz = ballVel.z * speedRetention;
+
+          ballBodyRef.current.setLinvel({ x: newVx, y: targetReboundVy, z: newVz }, true);
+
+          // Add realistic forward topspin roll on the ball
+          const topspinKick = (ballVel.z < 0 ? -1 : 1) * (isServe ? 16 : 11);
+          ballBodyRef.current.setAngvel({ x: topspinKick, y: 0, z: 0 }, true);
+        }
 
         const hitter = useTennisStore.getState().lastHitter;
 
@@ -469,38 +514,65 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             pointResolved.current = true;
             const winner = hitter === 'p1' ? 'cpu' : 'p1';
             awardPoint(winner);
-          } else if (isServeShot.current) {
-            // Serve landed legally in the target box!
-            serveLandedInBox.current = true;
+          } else {
+            // THE FIRST BOUNCE WAS 100% LEGAL AND IN-BOUNDS!
+            shotLegalBounceOccurred.current = true;
+            if (isServeShot.current) {
+              serveLandedInBox.current = true;
+            }
           }
-        }
-
-        // 5b. Second Bounce Check (Double Bounce -> Hitter wins point; If untouched serve -> ACE!)
-        if (bouncesSinceHit.current >= 2 && !pointResolved.current && hitter) {
-          pointResolved.current = true;
-          const isAce = isServeShot.current && serveLandedInBox.current;
-          awardPoint(hitter, isAce);
         }
       }
 
       // =======================================================================
-      // 6. BALL OUT OF COURT RUN-OFF
+      // 6. IMMEDIATE POINT RESOLUTION (ITF RULES & REALISTIC TENNIS MATCH PLAY)
       // =======================================================================
-      if (
-        (ballPos.y < -1.0 || Math.abs(ballPos.z) > 20 || Math.abs(ballPos.x) > 10) &&
-        !pointResolved.current
-      ) {
-        pointResolved.current = true;
-        const hitter = useTennisStore.getState().lastHitter || 'p1';
-        if (bouncesSinceHit.current >= 1) {
-          // Ball bounced legally in opponent's court, then escaped off-court without return:
-          // Hitter wins point! If it was an untouched serve -> ACE!
+      const currentHitter = useTennisStore.getState().lastHitter;
+
+      if (!pointResolved.current && currentHitter) {
+        // CASE A: The ball has ALREADY bounced legally in opponent's court
+        // (Player A fulfilled their duty! If Player B does not return it, Player A wins the point!)
+        if (shotLegalBounceOccurred.current) {
           const isAce = isServeShot.current && serveLandedInBox.current;
-          awardPoint(hitter, isAce);
+
+          // 1. Has the ball passed the receiver or baseline? (Receiver failed to return)
+          const hasPassedCpu =
+            currentHitter === 'p1' &&
+            (ballPos.z < -12.8 || (ballPos.z < cpuPos[2] - 0.7 && ballVel.z < 0));
+          const hasPassedP1 =
+            currentHitter === 'cpu' &&
+            (ballPos.z > 12.8 || (ballPos.z > p1[2] + 0.7 && ballVel.z > 0));
+
+          // 2. Has the ball angled wide past sidelines after bouncing in?
+          const isPastSidelines = Math.abs(ballPos.x) > 5.2;
+
+          // 3. Has the ball flown into the stands, barriers, or crowd area?
+          const isInStandsOrBarriers = Math.abs(ballPos.z) > 13.0 || Math.abs(ballPos.x) > 5.5;
+
+          // 4. Double bounce anywhere on court:
+          const isDoubleBounce = bouncesSinceHit.current >= 2;
+
+          if (hasPassedCpu || hasPassedP1 || isPastSidelines || isInStandsOrBarriers || isDoubleBounce) {
+            pointResolved.current = true;
+            awardPoint(currentHitter, isAce);
+          }
         } else {
-          // Ball flew out directly without bouncing in-bounds: Opponent wins point
-          const winner = hitter === 'p1' ? 'cpu' : 'p1';
-          awardPoint(winner);
+          // CASE B: The ball NEVER bounced legally in opponent's court
+          // (Flew directly out of bounds, into stands, or into netting without bouncing in)
+          const isOutOfBoundsDirectly =
+            Math.abs(ballPos.z) > 12.5 ||
+            (Math.abs(ballPos.z) > 1.0 && Math.abs(ballPos.x) > 4.6) ||
+            ballPos.y < -0.5;
+
+          if (isOutOfBoundsDirectly) {
+            pointResolved.current = true;
+            if (isServeShot.current) {
+              recordFault();
+            } else {
+              const winner = currentHitter === 'p1' ? 'cpu' : 'p1';
+              awardPoint(winner);
+            }
+          }
         }
       }
     }
@@ -559,6 +631,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         angularDamping={0.1}
         onCollisionEnter={() => {
           onBounce?.();
+          collisionTriggeredBounce.current = true;
         }}
       >
         <mesh ref={ballMeshRef} castShadow>

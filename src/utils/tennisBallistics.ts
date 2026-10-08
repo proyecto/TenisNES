@@ -126,29 +126,38 @@ export function calculateShotVelocity({
   // Base speed & depth modulated by steeringZ:
   // - Right hand Forehand (Drive): visibly more speed, power and offensive whip
   // - Left side Backhand (Revés): noticeably softer, controlled and defensive pace
-  let speedZ = isDrive ? 17.5 : 13.5;
+  let speedZ = isDrive ? 18.0 : 14.0;
   let effectiveTargetZ = targetZ;
-  let clearance = isDrive ? 1.20 : 1.32;
+  let clearance = isDrive ? 1.45 : 1.55;
 
   if (steeringZ > 0) {
     // Adelante: Tiro potente y profundo
-    speedZ = isDrive ? 21.5 : 16.5;
-    effectiveTargetZ = isMovingForward ? -10.5 : 10.5;
-    clearance = isDrive ? 1.05 : 1.15;
+    speedZ = isDrive ? 22.0 : 17.0;
+    effectiveTargetZ = isMovingForward ? -10.8 : 10.8;
+    clearance = isDrive ? 1.35 : 1.45;
   } else if (steeringZ < 0) {
     // Atrás: Dejada floja cerca de la red
-    speedZ = isDrive ? 11.5 : 9.0;
-    effectiveTargetZ = isMovingForward ? -3.0 : 3.0;
-    clearance = 1.38;
+    speedZ = isDrive ? 11.5 : 9.5;
+    effectiveTargetZ = isMovingForward ? -3.2 : 3.2;
+    clearance = 1.40;
   }
 
   const vz = isMovingForward ? -speedZ : speedZ;
   const timeToNet = Math.abs(z0 - NET_Z) / speedZ;
   const totalFlightTime = Math.abs(z0 - effectiveTargetZ) / speedZ;
 
+  // 1. Calculate minimum vy to guarantee athletic net clearance (at least 40-50cm above the 0.914m net)
   const requiredVyForNet =
-    (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / timeToNet;
-  const vy = Math.max(requiredVyForNet, steeringZ < 0 ? 2.8 : 3.6);
+    (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / Math.max(0.1, timeToNet);
+
+  // 2. Calculate ideal parabolic vy so the shot descends deep into opponent's baseline (y ≈ 0.08m)
+  const yGround = 0.08;
+  const requiredVyForLanding =
+    (yGround - y0 + 0.5 * GRAVITY * totalFlightTime * totalFlightTime) / Math.max(0.1, totalFlightTime);
+
+  // Blend constraints to produce an authentic topspin arc with plenty of height and downward plunge
+  const baseMinVy = steeringZ < 0 ? 3.4 : (isDrive ? 4.5 : 4.8);
+  const vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
 
   // Lateral steering:
   // Forehand (Drive) generates sharper cross-court angles (3.6) vs Backhand (2.0)

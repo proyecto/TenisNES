@@ -37,7 +37,7 @@ export const Court3D: React.FC = () => {
   return (
     <group>
       {/* 1. Ground Physics Collider & Full-Field Lush Lawn */}
-      <RigidBody type="fixed" friction={0.7} restitution={0.75}>
+      <RigidBody type="fixed" friction={0.65} restitution={0.80}>
         {/* Deep base ground */}
         <mesh position={[0, -0.1, 0]} receiveShadow>
           <boxGeometry args={[38, 0.2, 54]} />
