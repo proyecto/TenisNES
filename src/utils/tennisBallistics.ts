@@ -77,12 +77,18 @@ export function evaluateHitReach(
       ? 'drive'
       : 'backhand';
 
-  // Envolvente horizontal asimetrica segun tipo de golpe
-  const maxReachX = isOverhead ? 1.80 : isRightHandSide ? 1.95 : 1.15;
+  // Envolvente horizontal asimetrica segun tipo de golpe y estirada del rival
+  const maxReachX = isOverhead
+    ? 1.90
+    : isRightHandSide
+      ? (isOpponent ? 2.15 : 1.95)
+      : (isOpponent ? 1.70 : 1.15);
 
   // Rango de profundidad a lo largo del eje de juego
   const forwardDz = isOpponent ? dz : -dz;
-  const inFront = forwardDz >= -0.45 && forwardDz <= 1.30;
+  const inFront = isOpponent
+    ? forwardDz >= -0.65 && forwardDz <= 1.45
+    : forwardDz >= -0.45 && forwardDz <= 1.30;
 
   const normX = Math.abs(dx) / maxReachX;
   const normZ = forwardDz >= 0 ? forwardDz / 1.30 : Math.abs(forwardDz) / 0.45;
@@ -273,8 +279,8 @@ export class GroundstrokeStrategy implements IShotStrategy {
     if (clearance < 0.914) {
       vy = requiredVyForNet;
     } else {
-      const baseMinVy = steeringZ < 0 ? 3.0 : isDrive ? 3.8 : 4.2;
-      vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
+      // Prioritize precise target depth landing while ensuring net clearance
+      vy = Math.max(requiredVyForNet, requiredVyForLanding);
     }
 
     const steerMultiplier = isDrive ? 3.6 : 2.0;

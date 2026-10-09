@@ -12,6 +12,7 @@ import { useFrame } from '@react-three/fiber';
 import { Group, Vector3, MathUtils } from 'three';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { useTennisStore } from '../store/useTennisStore';
+import { determineCpuTargetPosition } from '../utils/tennisCpuAI';
 
 interface Player3DProps {
   position: [number, number, number];
@@ -207,86 +208,36 @@ export const Player3D: React.FC<Player3DProps> = ({
         swingProgress.current = 1.0;
       }
     } else if (isOpponent) {
-      // ADVANCED CPU TENNIS AI (Subidas a la red ante dejadas, peloteo dinámico y voleas)
+      // ADVANCED CPU TENNIS AI (Tactical positioning & No Man's Land elimination)
       const ball = useTennisStore.getState().ballPos;
       const ballV = useTennisStore.getState().ballVel;
       const status = useTennisStore.getState().matchStatus;
+      const server = useTennisStore.getState().server;
+      const serveSide = useTennisStore.getState().serveSide;
+      const rallyCount = useTennisStore.getState().rallyCount;
+      const isServeIncoming = server === 'p1' && (status === 'serving' || (status === 'playing' && rallyCount === 0));
 
-      let targetX = 0;
-      let targetZ = -11.8;
-      let desiredCpuSpeed = 8.6;
-
-      if (status === 'playing' || status === 'serving') {
-        const isBallOnCpuSide = ball[2] < 0;
-        const isBallMovingToCpu = ballV[2] < -0.5;
-
-        if (isBallMovingToCpu || isBallOnCpuSide) {
-          let predZ = -11.5;
-          let predX = ball[0];
-
-          if (isBallMovingToCpu && ball[1] > 0.2) {
-            // Ball is airborne moving toward CPU: estimate reachable landing plane
-            const targetY = 0.85;
-            const dy = targetY - ball[1];
-            const disc = ballV[1] * ballV[1] - 2 * 9.81 * dy;
-            let tReach = 0.45;
-            if (disc > 0) {
-              const t1 = (-ballV[1] - Math.sqrt(disc)) / -9.81;
-              const t2 = (-ballV[1] + Math.sqrt(disc)) / -9.81;
-              tReach = Math.max(0.1, t1 > 0.05 ? t1 : t2 > 0.05 ? t2 : 0.45);
-            } else {
-              tReach = Math.max(0.1, (ball[1] - 0.2) / Math.max(1.0, -ballV[1]));
-            }
-
-            predZ = ball[2] + ballV[2] * tReach;
-            predX = ball[0] + ballV[0] * tReach;
-          } else {
-            // Ball bounced or already on CPU side: track directly
-            predZ = ball[2];
-            predX = ball[0];
-          }
-
-          // IS IT A SHORT BALL / DEJADA NEAR THE NET?
-          const isShortBall = predZ > -7.5; // Landing in front half of CPU court
-
-          if (isShortBall) {
-            // CPU SPRINTS TO THE NET TO RETRIEVE THE DROP SHOT!
-            desiredCpuSpeed = 9.4; // Max athletic sprint
-            targetZ = Math.max(-13.0, Math.min(-1.3, predZ - 0.55));
-            const offsetSide = predX >= 0 ? -0.35 : 0.35;
-            targetX = Math.max(-5.0, Math.min(5.0, predX + offsetSide));
-          } else {
-            // Deep baseline rally
-            desiredCpuSpeed = 8.2;
-            targetZ = Math.max(-13.5, Math.min(-9.0, predZ - 0.65));
-            const offsetSide = predX >= 0 ? -0.35 : 0.35;
-            targetX = Math.max(-5.2, Math.min(5.2, predX + offsetSide));
-          }
-        } else {
-          // Ball is heading back towards Player 1: recover smoothly
-          desiredCpuSpeed = 6.2;
-          targetZ = -11.5;
-          targetX = 0;
-        }
-      } else {
-        const currentServeSide = useTennisStore.getState().serveSide;
-        if (server === 'cpu') {
-          targetX = currentServeSide === 'deuce' ? -1.8 : 1.8;
-          targetZ = -12.35;
-        } else {
-          targetX = currentServeSide === 'deuce' ? -2.2 : 2.2;
-          targetZ = -12.35;
-        }
-      }
+      const { targetX, targetZ, desiredSpeed } = determineCpuTargetPosition(
+        [currentPos.current.x, currentPos.current.y, currentPos.current.z],
+        ball,
+        ballV,
+        status,
+        server,
+        serveSide,
+        0,
+        isServeIncoming
+      );
 
       const diffX = targetX - currentPos.current.x;
       const diffZ = targetZ - currentPos.current.z;
       const dist = Math.hypot(diffX, diffZ);
-      const isMoving = dist > 0.08;
+      const isMoving = dist > 0.05;
 
       if (isMoving) {
-        const vx = (diffX / dist) * Math.min(dist, desiredCpuSpeed);
-        const vz = (diffZ / dist) * Math.min(dist, desiredCpuSpeed);
+        // Tight deceleration curve: FULL speed when dist >= 0.20m to eliminate sluggish crawl
+        const actualSpeed = dist < 0.20 ? (dist / 0.20) * desiredSpeed : desiredSpeed;
+        const vx = (diffX / dist) * actualSpeed;
+        const vz = (diffZ / dist) * actualSpeed;
         velocity.current.x = vx;
         velocity.current.z = vz;
         currentPos.current.x += vx * delta;
@@ -296,9 +247,9 @@ export const Player3D: React.FC<Player3DProps> = ({
         velocity.current.z = 0;
       }
 
-      // Allow CPU to move all the way to Z = -1.2m at the net!
-      currentPos.current.x = Math.max(-6.2, Math.min(6.2, currentPos.current.x));
-      currentPos.current.z = Math.max(-14.5, Math.min(-1.2, currentPos.current.z));
+      // Restrict CPU within physical court limits
+      currentPos.current.x = Math.max(-5.5, Math.min(5.5, currentPos.current.x));
+      currentPos.current.z = Math.max(-14.2, Math.min(-1.5, currentPos.current.z));
 
       // Update coordinates in place to eliminate garbage collection pauses
       const sCpu = useTennisStore.getState().cpuPos;

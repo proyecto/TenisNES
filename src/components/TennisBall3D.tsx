@@ -18,6 +18,7 @@ import { useTennisStore } from '../store/useTennisStore';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { calculateShotVelocity, evaluateHitReach } from '../utils/tennisBallistics';
 import { evaluateBounce } from '../utils/tennisScoring';
+import { selectCpuShot } from '../utils/tennisCpuAI';
 
 /**
  * Optional callback fired on ball bounce or net deflection.
@@ -484,33 +485,18 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         cpuReach.canHit &&
         t - lastHitTime.current > 0.38
       ) {
-        const p1X = useTennisStore.getState().p1Pos[0];
-        const p1Z = useTennisStore.getState().p1Pos[2];
-        const isP1AtNet = p1Z < 7.0; // Player 1 is rushing the net!
-
-        let cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob';
-        if (cpuReach.isOverhead || ballPos.y >= 1.65) {
-          cpuShotType = 'smash';
-        } else if (isP1AtNet && Math.random() < 0.65) {
-          cpuShotType = 'lob'; // Tactical lob over rushing Player 1!
-        } else {
-          cpuShotType = cpuReach.shotType;
-        }
-
+        const p1Pos = useTennisStore.getState().p1Pos;
+        const isServeReturn = isServeShot.current;
+        const decision = selectCpuShot(cpuPos, [ballPos.x, ballPos.y, ballPos.z], p1Pos, cpuReach, isServeReturn);
+        const cpuShotType = decision.shotType;
         lastShotType.current = cpuShotType;
-
-        const preferredSide = p1X < 0 ? 1 : -1;
-        const targetX = preferredSide * (cpuShotType === 'drive' ? (2.0 + Math.random() * 2.2) : (1.4 + Math.random() * 1.4));
-
-        // When CPU is at the net retrieving a short ball, it drives deep into Player 1's court!
-        const isCpuNearNet = cpuPos[2] > -5.5;
-        const targetZ = isCpuNearNet ? 9.2 + Math.random() * 2.0 : 10.2;
 
         const cpuShot = calculateShotVelocity({
           fromPos: [ballPos.x, ballPos.y, ballPos.z],
-          targetZ,
-          targetX,
-          steeringX: 0,
+          targetZ: decision.targetZ,
+          targetX: decision.targetX,
+          steeringX: decision.steeringX,
+          steeringZ: decision.steeringZ,
           isServe: false,
           shotType: cpuShotType,
         });
@@ -524,22 +510,12 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             : cpuShotType === 'drive'
             ? -10
             : -6;
-        ballBodyRef.current.setAngvel({ x: cpuSpinX, y: preferredSide * 3, z: 0 }, true);
+        ballBodyRef.current.setAngvel({ x: cpuSpinX, y: decision.steeringX * -3, z: 0 }, true);
 
         // Record CPU rally shot speed for TV radar
         const cpuRallySpeedMs = Math.hypot(cpuShot.x, cpuShot.y, cpuShot.z);
         const cpuRallySpeedKmh = Math.round(cpuRallySpeedMs * 3.6);
-        let cpuLabel = 'GOLPE CPU';
-        if (cpuShotType === 'smash') {
-          cpuLabel = '¡REMATE SMASH CPU!';
-        } else if (cpuShotType === 'lob') {
-          cpuLabel = 'GLOBO TÁCTICO CPU';
-        } else if (cpuShotType === 'drive') {
-          cpuLabel = 'DRIVE CPU';
-        } else {
-          cpuLabel = 'REVÉS A 2 MANOS CPU';
-        }
-        useTennisStore.getState().recordShotSpeed(cpuRallySpeedKmh, cpuLabel, 'cpu', false);
+        useTennisStore.getState().recordShotSpeed(cpuRallySpeedKmh, decision.label, 'cpu', false);
 
         useTennisStore.getState().triggerCpuSwing(cpuShotType);
         setLastHitter('cpu');
