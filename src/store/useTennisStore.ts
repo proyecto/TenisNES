@@ -81,9 +81,9 @@ export interface ScoreState {
   /** Monotonic counter to trigger Player 1 swing animation */
   p1SwingTrigger: number;
   /** Stroke type for Player 1 */
-  p1ShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+  p1ShotType: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice';
   /** Stroke type for CPU */
-  cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+  cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice';
   /** Timestamp when ball was tossed in air for serve */
   serveTossTime: number;
   /** Speed of latest shot in km/h */
@@ -136,9 +136,9 @@ interface TennisStore extends ScoreState {
   /** Displays a custom umpire call banner with optional color */
   setLastCall: (call: string | null, color?: string) => void;
   /** Triggers CPU racket swing animation */
-  triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
+  triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice') => void;
   /** Triggers Player 1 racket swing animation */
-  triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
+  triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice') => void;
   /** Prepares players and ball for the next serve */
   resetServe: () => void;
   /** Logs shot radar speed telemetry */

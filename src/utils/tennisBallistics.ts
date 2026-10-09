@@ -22,7 +22,7 @@ export interface HitParameters {
   /** Indica si el golpe corresponde a un saque oficial */
   isServe?: boolean;
   /** Tipo de golpe seleccionado o detectado */
-  shotType?: 'drive' | 'backhand' | 'smash' | 'lob';
+  shotType?: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice';
 }
 
 export interface ShotVelocity {

@@ -80,11 +80,13 @@ export const Player3D: React.FC<Player3DProps> = ({
   const stepProgress = useRef(0);
 
   // Stroke & service animation state
-  const currentShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob'>('drive');
+  const currentShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob' | 'slice'>('drive');
   const swingProgress = useRef(0);
   const isSwinging = useRef(false);
   const lastCpuSwingTrigger = useRef(0);
   const lastP1SwingTrigger = useRef(0);
+  const currentHeadYaw = useRef(0);
+  const currentHeadPitch = useRef(0);
 
   const lastMatchStatus = useRef<string>('');
   const lastServeSide = useRef<string>('');
@@ -195,10 +197,13 @@ export const Player3D: React.FC<Player3DProps> = ({
         const ball = useTennisStore.getState().ballPos;
         const isRight = ball[0] >= currentPos.current.x;
         const isOverhead = ball[1] >= 1.65;
-        const isLobInput = keys.current.lob || (keys.current.backward && keys.current.action);
+        const isLobInput = keys.current.lob;
+        const isSliceInput = keys.current.backward && !keys.current.lob && keys.current.action;
 
         if (isLobInput) {
           currentShotType.current = 'lob';
+        } else if (isSliceInput) {
+          currentShotType.current = 'slice';
         } else if (matchStatus === 'serving' || isOverhead) {
           currentShotType.current = 'smash';
         } else {
@@ -297,10 +302,11 @@ export const Player3D: React.FC<Player3DProps> = ({
     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
     currentFacingAngle.current += angleDiff * Math.min(1.0, delta * 12.0);
 
-    const targetRoll = isRunning ? (-velocity.current.x / 8.8) * 0.16 : 0;
-    const targetPitch = isRunning ? 0.12 : 0;
-    currentTilt.current.roll = MathUtils.lerp(currentTilt.current.roll, targetRoll, 0.2);
-    currentTilt.current.pitch = MathUtils.lerp(currentTilt.current.pitch, targetPitch, 0.2);
+    const targetRoll = isRunning ? (-velocity.current.x / 8.8) * 0.32 : 0;
+    const forwardVel = isOpponent ? -velocity.current.z : velocity.current.z;
+    const targetPitch = isRunning ? MathUtils.clamp(forwardVel * 0.035 + 0.12, -0.15, 0.30) : 0;
+    currentTilt.current.roll = MathUtils.lerp(currentTilt.current.roll, targetRoll, 0.22);
+    currentTilt.current.pitch = MathUtils.lerp(currentTilt.current.pitch, targetPitch, 0.22);
 
     const readyPulse = Math.sin(t * 7.5);
 
@@ -308,13 +314,20 @@ export const Player3D: React.FC<Player3DProps> = ({
     squatAmount.current = MathUtils.lerp(squatAmount.current, targetSquat, delta * 10.0);
     const sq = squatAmount.current;
 
+    const strokePhase = isSwinging.current ? 1 - swingProgress.current : 0;
+    const isSmash = currentShotType.current === 'smash';
+    // Explosive airborne vertical jump on overhead smashes & serves
+    const smashJumpHeight = isSmash && isSwinging.current
+      ? Math.sin(strokePhase * Math.PI) * 0.45
+      : 0;
+
     const verticalBob = isRunning
       ? Math.abs(Math.sin(gaitPhase)) * 0.055
       : readyPulse * 0.018 * sq;
 
     groupRef.current.position.set(
       currentPos.current.x,
-      position[1] + verticalBob,
+      position[1] + verticalBob + smashJumpHeight,
       currentPos.current.z
     );
 
@@ -348,13 +361,35 @@ export const Player3D: React.FC<Player3DProps> = ({
       const currentHipZ = MathUtils.lerp(0.0, -0.16, sq);
       pelvisGroupRef.current.position.set(0, currentHipY, currentHipZ);
 
-      // 2. Torso athletic forward hinge & Head counter-rotation
+      // 2. Head ball-tracking orientation: player looks toward incoming tennis ball
+      const ball = useTennisStore.getState().ballPos;
+      const relX = ball[0] - currentPos.current.x;
+      const relZ = ball[2] - currentPos.current.z;
+      const relY = ball[1] - (currentPos.current.y + 1.55);
+      const isBallAhead = isOpponent ? relZ > 0 : relZ < 0;
+      let targetYaw = 0;
+      let targetHeadPitchVal = 0;
+      if (isBallAhead && !isSwinging.current) {
+        targetYaw = MathUtils.clamp(Math.atan2(relX, isOpponent ? relZ : -relZ) * 0.55, -0.7, 0.7);
+        targetHeadPitchVal = MathUtils.clamp(Math.atan2(relY, Math.hypot(relX, relZ)) * 0.65, -0.4, 0.45);
+      }
+      currentHeadYaw.current = MathUtils.lerp(currentHeadYaw.current, targetYaw, delta * 14.0);
+      currentHeadPitch.current = MathUtils.lerp(currentHeadPitch.current, targetHeadPitchVal, delta * 14.0);
+
+      // Torso athletic forward hinge & Head counter-rotation + Ball Look
       const torsoLean = MathUtils.lerp(0.12, 0.56, sq);
       torsoGroupRef.current.rotation.x = torsoLean;
-      headGroupRef.current.rotation.x = -torsoLean * 0.82;
+      headGroupRef.current.rotation.x = -torsoLean * 0.82 + currentHeadPitch.current;
+      headGroupRef.current.rotation.y = currentHeadYaw.current;
 
-      // 3. LEGS: STRICTLY PARALLEL sagittal kinematics
-      if (isRunning) {
+      // 3. LEGS: STRICTLY PARALLEL sagittal kinematics with airborne scissors kick during smash jump
+      if (smashJumpHeight > 0.05) {
+        const jumpNorm = Math.sin(strokePhase * Math.PI);
+        leftLegRef.current.rotation.set(-0.75 * jumpNorm, 0, 0);
+        rightLegRef.current.rotation.set(0.45 * jumpNorm, 0, 0);
+        leftKneeRef.current.rotation.set(-0.55 * jumpNorm, 0, 0);
+        rightKneeRef.current.rotation.set(-1.85 * jumpNorm, 0, 0);
+      } else if (isRunning) {
         // Parallel-track sprint gait
         const leftHipSwing = Math.sin(gaitPhase) * 0.82;
         const rightHipSwing = -Math.sin(gaitPhase) * 0.82;
@@ -409,6 +444,7 @@ export const Player3D: React.FC<Player3DProps> = ({
         const isBackhand = currentShotType.current === 'backhand';
         const isSmash = currentShotType.current === 'smash';
         const isLob = currentShotType.current === 'lob';
+        const isSlice = currentShotType.current === 'slice';
 
         if (isLob) {
           // ===================================================================
@@ -682,9 +718,81 @@ export const Player3D: React.FC<Player3DProps> = ({
               MathUtils.lerp(0.35, 0.25, p)
             );
           }
+        } else if (isSlice) {
+          // ===================================================================
+          // 3. SLICE / DEJADA: RECORRIDO DESCENDENTE DE ARRIBA A ABAJO
+          // High-to-low chop with open racket face and firm wrist
+          // ===================================================================
+          if (strokePhase < 0.30) {
+            // Fase 1: Carga alta (preparación por encima del hombro derecho)
+            const p = strokePhase / 0.30;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.12, 0.05, p),
+              MathUtils.lerp(0, -0.55, p) * (isOpponent ? -1 : 1),
+              0
+            );
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.25, -0.48, p),
+              MathUtils.lerp(0.38, 0.55, p),
+              MathUtils.lerp(0, -0.15, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.62, -1.35, p),
+              MathUtils.lerp(-0.26, -0.85, p),
+              MathUtils.lerp(0.2, 0.95, p)
+            );
+            racketGroupRef.current.rotation.set(-0.45, -0.55, 0.75);
+
+            leftArmRef.current.position.set(0.32, 0.35, 0.1);
+            leftArmRef.current.rotation.set(-0.35, 0.35, -0.25);
+          } else if (strokePhase < 0.68) {
+            // Fase 2: Tajo descendente cortando la bola
+            const p = (strokePhase - 0.30) / 0.38;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.05, 0.22, p),
+              MathUtils.lerp(-0.55, 0.25, p) * (isOpponent ? -1 : 1),
+              0
+            );
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.48, -0.38, p),
+              MathUtils.lerp(0.55, 0.28, p),
+              MathUtils.lerp(-0.15, 0.25, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-1.35, 0.45, p),
+              MathUtils.lerp(-0.85, 0.25, p),
+              MathUtils.lerp(0.95, -0.35, p)
+            );
+            racketGroupRef.current.rotation.set(0.45, -0.25, 0.35);
+
+            leftArmRef.current.position.set(0.35, 0.38, -0.15);
+            leftArmRef.current.rotation.set(-0.65, 0.45, -0.35);
+          } else {
+            // Fase 3: Terminación baja y equilibrada
+            const p = (strokePhase - 0.68) / 0.32;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.22, 0.12, p),
+              MathUtils.lerp(0.25, 0, p) * (isOpponent ? -1 : 1),
+              0
+            );
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.38, -0.25, p),
+              MathUtils.lerp(0.28, 0.38, p),
+              MathUtils.lerp(0.25, 0, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(0.45, -0.62, p),
+              MathUtils.lerp(0.25, -0.26, p),
+              MathUtils.lerp(-0.35, 0.2, p)
+            );
+            racketGroupRef.current.rotation.set(0.55, -0.18, 0.25);
+
+            leftArmRef.current.position.set(0.25, 0.38, 0);
+            leftArmRef.current.rotation.set(-0.68, 0.28, -0.28);
+          }
         } else {
           // ===================================================================
-          // 3. DRIVE: A UNA MANO, A LA DERECHA, Y LLEGA MÁS LEJOS (ALCANCE AMPLIO)
+          // 4. DRIVE: A UNA MANO, A LA DERECHA, Y LLEGA MÁS LEJOS (ALCANCE AMPLIO)
           // "Si pasa por la derecha... golpe a una mano claramente... más alcance"
           // ===================================================================
           if (strokePhase < 0.28) {

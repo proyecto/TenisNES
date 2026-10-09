@@ -45,7 +45,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
   // Track previous space key state to detect single keydown presses
   const prevActionPressed = useRef(false);
   const prevLobPressed = useRef(false);
-  const lastShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob'>('drive');
+  const lastShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob' | 'slice'>('drive');
   const lastHitTime = useRef(0);
   const serveTossTime = useRef(0);
   const servePrepEnteredTime = useRef(0);
@@ -384,11 +384,14 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     // =========================================================================
     if (matchStatus === 'playing') {
       const reach = evaluateHitReach(p1, [ballPos.x, ballPos.y, ballPos.z], false);
-      const wantsLob = keys.current.lob || (keys.current.backward && (isActionJustPressed || keys.current.action));
+      const wantsLob = keys.current.lob;
+      const wantsSlice = keys.current.backward && !keys.current.lob && (isActionJustPressed || keys.current.action);
       const isOverhead = reach.isOverhead || ballPos.y >= 1.65;
 
-      const currentIntentShotType: 'drive' | 'backhand' | 'smash' | 'lob' = wantsLob
+      const currentIntentShotType: 'drive' | 'backhand' | 'smash' | 'lob' | 'slice' = wantsLob
         ? 'lob'
+        : wantsSlice
+        ? 'slice'
         : isOverhead
         ? 'smash'
         : reach.shotType;
