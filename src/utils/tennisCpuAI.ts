@@ -28,6 +28,11 @@ import type { HitReachResult } from './tennisBallistics';
 export type CpuTacticalState = 'BASELINE_DEFENSE' | 'NET_ATTACK' | 'RETREAT_TO_BASELINE';
 
 /**
+ * Difficulty levels for the CPU Opponent.
+ */
+export type CpuDifficulty = 'amateur' | 'pro' | 'legend';
+
+/**
  * Trajectory prediction result for an airborne ball.
  */
 export interface BallPrediction {
@@ -174,8 +179,11 @@ export function determineCpuTargetPosition(
   server: 'p1' | 'cpu',
   serveSide: 'deuce' | 'ad',
   bouncesSinceHit: number,
-  isServeIncoming: boolean = false
+  isServeIncoming: boolean = false,
+  difficulty: CpuDifficulty = 'pro'
 ): CpuTargetPosition {
+  const speedScale = difficulty === 'amateur' ? 0.68 : difficulty === 'legend' ? 1.15 : 1.0;
+
   // Service preparation setup
   if (matchStatus === 'serve_prep' || (matchStatus === 'serving' && server === 'cpu')) {
     const targetX = server === 'cpu'
@@ -184,7 +192,7 @@ export function determineCpuTargetPosition(
     return {
       targetX,
       targetZ: DEEP_RECOVERY_Z,
-      desiredSpeed: 6.5,
+      desiredSpeed: 6.5 * speedScale,
       tacticalState: 'BASELINE_DEFENSE',
     };
   }
@@ -202,7 +210,7 @@ export function determineCpuTargetPosition(
       return {
         targetX: prediction.strikeX,
         targetZ: prediction.strikeZ,
-        desiredSpeed: 10.8, // Elite sprint to save drop shot
+        desiredSpeed: 10.8 * speedScale, // Scaled sprint to save drop shot
         tacticalState: 'NET_ATTACK',
       };
     } else {
@@ -210,7 +218,7 @@ export function determineCpuTargetPosition(
       return {
         targetX: prediction.strikeX,
         targetZ: prediction.strikeZ,
-        desiredSpeed: 10.2, // Elite athletic baseline movement
+        desiredSpeed: 10.2 * speedScale, // Scaled baseline movement
         tacticalState: 'BASELINE_DEFENSE',
       };
     }
@@ -225,7 +233,7 @@ export function determineCpuTargetPosition(
     return {
       targetX: Math.max(-2.5, Math.min(2.5, ballPos[0] * 0.4)),
       targetZ: NET_ATTACK_Z,
-      desiredSpeed: 7.5,
+      desiredSpeed: 7.5 * speedScale,
       tacticalState: 'NET_ATTACK',
     };
   } else {
@@ -233,7 +241,7 @@ export function determineCpuTargetPosition(
     return {
       targetX: 0,
       targetZ: DEEP_RECOVERY_Z,
-      desiredSpeed: 8.5,
+      desiredSpeed: 8.5 * speedScale,
       tacticalState: 'BASELINE_DEFENSE',
     };
   }
@@ -255,47 +263,50 @@ export function selectCpuShot(
   ballPos: [number, number, number],
   p1Pos: [number, number, number],
   cpuReach: HitReachResult,
-  isServeReturn: boolean = false
+  isServeReturn: boolean = false,
+  difficulty: CpuDifficulty = 'pro'
 ): CpuShotDecision {
   const isCpuAtNet = cpuPos[2] > -5.0;
   const isP1AtNet = p1Pos[2] < 7.0;
   const isP1Deep = p1Pos[2] > 13.0;
   const isHighBall = cpuReach.isOverhead || ballPos[1] >= 1.65;
 
-  // 1. SERVE RETURN: High-percentage controlled return to center/deep
+  // 1. SERVE RETURN: High-percentage controlled return
   if (isServeReturn) {
     const returnCrossSide = p1Pos[0] >= 0 ? -1.8 : 1.8;
+    const returnSpread = difficulty === 'amateur' ? 0.5 : difficulty === 'legend' ? 1.4 : 1.0;
     return {
-      targetX: returnCrossSide + (Math.random() - 0.5) * 1.0,
-      targetZ: 8.5 + (Math.random() - 0.5) * 1.0, // Safe deep court (3.4m inside baseline)
-      steeringX: 0, // Direct target coordinate (do not apply extra steering multiplier)
-      steeringZ: 0, // Controlled trajectory with guaranteed net clearance
+      targetX: (returnCrossSide + (Math.random() - 0.5) * returnSpread) * (difficulty === 'amateur' ? 0.65 : 1.0),
+      targetZ: difficulty === 'amateur' ? 7.5 : difficulty === 'legend' ? 9.2 : 8.5,
+      steeringX: 0,
+      steeringZ: 0,
       shotType: cpuReach.shotType,
-      label: 'RESTO DE SAQUE CPU',
+      label: difficulty === 'amateur' ? 'RESTO SUAVE CPU' : 'RESTO DE SAQUE CPU',
     };
   }
 
   // 2. OVERHEAD SMASH: Punish any high floater safely inside court
   if (isHighBall) {
     const openCornerX = p1Pos[0] >= 0 ? -2.6 : 2.6;
+    const cornerMult = difficulty === 'amateur' ? 0.6 : difficulty === 'legend' ? 1.15 : 1.0;
     return {
-      targetX: openCornerX + (Math.random() - 0.5) * 0.6,
-      targetZ: 8.2 + (Math.random() - 0.5) * 0.8,
+      targetX: openCornerX * cornerMult + (Math.random() - 0.5) * 0.5,
+      targetZ: difficulty === 'amateur' ? 7.6 : 8.4,
       steeringX: 0,
       steeringZ: 0,
       shotType: 'smash',
-      label: '¡REMATE SMASH IMPLACABLE CPU!',
+      label: difficulty === 'legend' ? '¡REMATE SMASH LETAL CPU!' : '¡REMATE SMASH IMPLACABLE CPU!',
     };
   }
 
   // 3. TACTICAL RESPONSE TO P1 RUSHING THE NET
-  if (isP1AtNet) {
+  if (isP1AtNet && difficulty !== 'amateur') {
     const roll = Math.random();
-    if (roll < 0.40) {
-      // Tactical Lob over P1's head to baseline (safe landing at 9.6m, 2.3m inside baseline)
+    if (roll < (difficulty === 'legend' ? 0.50 : 0.40)) {
+      // Tactical Lob over P1's head to baseline
       return {
         targetX: (p1Pos[0] >= 0 ? -1.8 : 1.8) + (Math.random() - 0.5) * 0.6,
-        targetZ: 9.6,
+        targetZ: difficulty === 'legend' ? 10.2 : 9.6,
         steeringX: 0,
         steeringZ: 0,
         shotType: 'lob',
@@ -303,23 +314,23 @@ export function selectCpuShot(
       };
     } else {
       // Fast passing shot down the line or sharp cross-court
-      const passTargetX = p1Pos[0] >= 0 ? -2.8 : 2.8;
+      const passTargetX = (p1Pos[0] >= 0 ? -2.8 : 2.8) * (difficulty === 'legend' ? 1.12 : 1.0);
       return {
         targetX: passTargetX,
-        targetZ: 8.4,
+        targetZ: difficulty === 'legend' ? 9.0 : 8.4,
         steeringX: 0,
         steeringZ: 0,
         shotType: cpuReach.shotType,
-        label: 'PASSING SHOT CPU',
+        label: difficulty === 'legend' ? 'PASSING SHOT GANADOR CPU' : 'PASSING SHOT CPU',
       };
     }
   }
 
   // 4. CPU ATTACKING AT THE NET (VOLLEYS)
   if (isCpuAtNet) {
-    // Sharp angled volley put-away safely within singles lines
     const angleSide = p1Pos[0] >= 0 ? -1 : 1;
-    const targetX = angleSide * (2.4 + Math.random() * 0.6);
+    const widthFactor = difficulty === 'amateur' ? 1.6 : difficulty === 'legend' ? 3.1 : 2.4;
+    const targetX = angleSide * (widthFactor + Math.random() * 0.5);
     return {
       targetX,
       targetZ: 6.2 + Math.random() * 0.8,
@@ -331,16 +342,17 @@ export function selectCpuShot(
   }
 
   // 5. BASELINE RALLY: Dynamic non-predictable tactical distribution
-  // A. Surprise Drop Shot (Dejada) when P1 is pinned far behind the baseline
-  if (isP1Deep && Math.random() < 0.20) {
+  // A. Surprise Drop Shot (Dejada) when P1 is pinned far behind the baseline (Pro & Legend only)
+  const dropProb = difficulty === 'legend' ? 0.32 : difficulty === 'pro' ? 0.20 : 0.0;
+  if (isP1Deep && Math.random() < dropProb) {
     const dropSide = p1Pos[0] >= 0 ? -1.8 : 1.8;
     return {
       targetX: dropSide,
-      targetZ: 3.2,
+      targetZ: difficulty === 'legend' ? 2.8 : 3.4,
       steeringX: 0,
       steeringZ: -1, // Backspin drop shot
       shotType: 'drive',
-      label: '¡DEJADA CORTA SORPRESA CPU!',
+      label: difficulty === 'legend' ? '¡DEJADA MILIMÉTRICA CPU!' : '¡DEJADA CORTA SORPRESA CPU!',
     };
   }
 
@@ -349,30 +361,37 @@ export function selectCpuShot(
   let targetX: number;
   let label: string;
 
-  if (tacticalRoll < 0.55) {
-    // Cross-court (Cruzado): Aimed safely inside opposite sideline (max |X| = 3.0m)
+  if (difficulty === 'amateur') {
+    // Amateur: comfortable central rally placement
+    targetX = (Math.random() - 0.5) * 2.8;
+    label = cpuReach.shotType === 'drive' ? 'DRIVE REGULAR CPU' : 'REVÉS REGULAR CPU';
+  } else if (tacticalRoll < 0.55) {
+    // Cross-court (Cruzado)
     const crossSide = p1Pos[0] >= 0 ? -1 : 1;
-    targetX = crossSide * (2.4 + Math.random() * 0.6);
+    const crossWidth = difficulty === 'legend' ? 2.8 + Math.random() * 0.5 : 2.4 + Math.random() * 0.6;
+    targetX = crossSide * crossWidth;
     label = cpuReach.shotType === 'drive' ? 'DRIVE CRUZADO CPU' : 'REVÉS CRUZADO CPU';
   } else if (tacticalRoll < 0.85) {
-    // Down-the-Line (Paralelo): Catch P1 shifting toward center (max |X| = 2.8m)
+    // Down-the-Line (Paralelo)
     const lineSide = p1Pos[0] >= 0 ? 1 : -1;
-    targetX = lineSide * (2.2 + Math.random() * 0.5);
+    const lineWidth = difficulty === 'legend' ? 2.6 + Math.random() * 0.5 : 2.2 + Math.random() * 0.5;
+    targetX = lineSide * lineWidth;
     label = cpuReach.shotType === 'drive' ? 'DRIVE PARALELO CPU' : 'REVÉS PARALELO CPU';
   } else {
-    // Heavy Center / Body Shot: Jam P1 at center
+    // Heavy Center / Body Shot
     targetX = (Math.random() - 0.5) * 1.0;
     label = 'BOLA PROFUNDA AL CENTRO CPU';
   }
 
-  // Deep depth: 8.2m to 9.2m (safely leaving 2.7m to 3.7m buffer from baseline 11.89m)
-  const targetZ = 8.4 + Math.random() * 0.8;
+  // Depth modulation: Amateur ~7.6m, Pro ~8.8m, Legend ~9.6m
+  const baseDepth = difficulty === 'amateur' ? 7.5 : difficulty === 'legend' ? 9.2 : 8.4;
+  const targetZ = baseDepth + Math.random() * 0.8;
 
   return {
     targetX,
     targetZ,
-    steeringX: 0, // Direct target coordinates without overshoot multipliers
-    steeringZ: 0, // Normal rally speed and height
+    steeringX: 0,
+    steeringZ: 0,
     shotType: cpuReach.shotType,
     label,
   };

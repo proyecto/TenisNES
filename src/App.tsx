@@ -10,6 +10,8 @@
 import React, { useState, useEffect } from 'react';
 import { TennisScene } from './components/TennisScene';
 import { useTennisStore } from './store/useTennisStore';
+import { GameMenuOverlay } from './components/GameMenuOverlay';
+import { MatchFinishOverlay } from './components/MatchFinishOverlay';
 
 export const App: React.FC = () => {
   const {
@@ -40,6 +42,8 @@ export const App: React.FC = () => {
     lastBounceTime,
     isMuted,
     toggleMute,
+    isMenuOpen,
+    setMenuOpen,
   } = useTennisStore();
 
   // Match duration stopwatch in seconds
@@ -47,21 +51,25 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setMatchElapsedSeconds((prev) => prev + 1);
+      if (!useTennisStore.getState().isPaused && !useTennisStore.getState().isMenuOpen) {
+        setMatchElapsedSeconds((prev) => prev + 1);
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Keyboard shortcut: Press 'M' to toggle sound
+  // Keyboard shortcuts: 'M' for audio, 'Escape' for tournament menu
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'm' || e.key === 'M') {
         toggleMute();
+      } else if (e.key === 'Escape') {
+        setMenuOpen(!useTennisStore.getState().isMenuOpen);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleMute]);
+  }, [toggleMute, setMenuOpen]);
 
   const formatMatchTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -282,6 +290,30 @@ export const App: React.FC = () => {
             >
               <span>{isMuted ? '🔇' : '🔊'}</span>
               <span>{isMuted ? 'MUTED' : 'AUDIO'}</span>
+            </button>
+            <button
+              onClick={() => setMenuOpen(!isMenuOpen)}
+              title="Menú de Partido y Dificultad [ESC]"
+              data-testid="menu-toggle-btn"
+              style={{
+                background: 'rgba(250, 204, 21, 0.18)',
+                border: '1px solid rgba(250, 204, 21, 0.45)',
+                color: '#facc15',
+                borderRadius: 6,
+                padding: '1px 7px',
+                fontSize: 9,
+                fontWeight: 800,
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                letterSpacing: 0.5,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span>⚙️</span>
+              <span>MENÚ</span>
             </button>
           </div>
         </div>
@@ -771,6 +803,15 @@ export const App: React.FC = () => {
         </span>
         <span style={{ color: '#e2e8f0' }}>{statusInfo.text}</span>
       </div>
+
+      {/* =======================================================================
+          6. MODALS & OVERLAYS: GAME MENU & MATCH FINISH CEREMONY
+          ======================================================================= */}
+      <GameMenuOverlay onRestartMatch={() => setMatchElapsedSeconds(0)} />
+      <MatchFinishOverlay
+        matchElapsedSeconds={matchElapsedSeconds}
+        onRestartMatch={() => setMatchElapsedSeconds(0)}
+      />
     </div>
   );
 };

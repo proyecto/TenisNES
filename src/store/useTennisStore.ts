@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { calculatePointProgression } from '../utils/tennisScoring';
 import { tennisAudio } from '../utils/tennisAudio';
+import type { CpuDifficulty } from '../utils/tennisCpuAI';
 
 /**
  * @file useTennisStore.ts
@@ -110,6 +111,12 @@ export interface ScoreState {
   isMuted: boolean;
   /** Master volume factor between 0.0 and 1.0 */
   volume: number;
+  /** Selected difficulty for the CPU AI opponent */
+  difficulty: CpuDifficulty;
+  /** Whether the tournament game menu overlay is open */
+  isMenuOpen: boolean;
+  /** Whether active gameplay is paused */
+  isPaused: boolean;
 }
 
 interface TennisStore extends ScoreState {
@@ -149,6 +156,14 @@ interface TennisStore extends ScoreState {
   toggleMute: () => void;
   /** Updates audio volume level */
   setVolume: (volume: number) => void;
+  /** Updates the CPU difficulty setting */
+  setDifficulty: (level: CpuDifficulty) => void;
+  /** Opens or closes the game tournament menu overlay */
+  setMenuOpen: (open: boolean) => void;
+  /** Sets the paused state of gameplay */
+  setPaused: (paused: boolean) => void;
+  /** Fully resets match scores, sets, aces, and stats */
+  resetMatch: () => void;
 }
 
 export const useTennisStore = create<TennisStore>((set) => ({
@@ -189,6 +204,9 @@ export const useTennisStore = create<TennisStore>((set) => ({
   lastBounceTime: 0,
   isMuted: false,
   volume: 0.8,
+  difficulty: 'pro',
+  isMenuOpen: false,
+  isPaused: false,
 
   toggleMute: () =>
     set((state) => {
@@ -405,6 +423,43 @@ export const useTennisStore = create<TennisStore>((set) => ({
       matchStatus: 'serve_prep',
       lastHitter: null,
       lastCall: null,
+    }),
+  setDifficulty: (level) => set({ difficulty: level }),
+  setMenuOpen: (open) => set({ isMenuOpen: open, isPaused: open }),
+  setPaused: (paused) => set({ isPaused: paused }),
+  resetMatch: () =>
+    set({
+      p1Points: 0,
+      p2Points: 0,
+      p1Games: 0,
+      p2Games: 0,
+      p1Sets: 0,
+      p2Sets: 0,
+      p1Aces: 0,
+      p2Aces: 0,
+      server: 'p1',
+      serveSide: 'deuce',
+      faultCount: 0,
+      rallyCount: 0,
+      matchStatus: 'serve_prep',
+      lastHitter: null,
+      lastCall: null,
+      lastSpeedKmh: 0,
+      lastSpeedMph: 0,
+      lastSpeedLabel: '',
+      lastSpeedHitter: null,
+      maxServeSpeedP1: 0,
+      maxServeSpeedCpu: 0,
+      lastBouncePos: null,
+      lastBounceInBounds: null,
+      lastBounceDistanceCm: null,
+      lastBounceTime: 0,
+      p1Pos: [1.8, 0, 12.35],
+      cpuPos: [-2.2, 0, -12.35],
+      ballPos: [1.6, 1.15, 12.0],
+      ballVel: [0, 0, 0],
+      isMenuOpen: false,
+      isPaused: false,
     }),
 }));
 

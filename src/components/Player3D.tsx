@@ -93,6 +93,7 @@ export const Player3D: React.FC<Player3DProps> = ({
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
+    if (useTennisStore.getState().isPaused || useTennisStore.getState().isMenuOpen) return;
 
     const t = state.clock.getElapsedTime();
     const matchStatus = useTennisStore.getState().matchStatus;
@@ -222,6 +223,7 @@ export const Player3D: React.FC<Player3DProps> = ({
       const rallyCount = useTennisStore.getState().rallyCount;
       const isServeIncoming = server === 'p1' && (status === 'serving' || (status === 'playing' && rallyCount === 0));
 
+      const difficulty = useTennisStore.getState().difficulty;
       const { targetX, targetZ, desiredSpeed } = determineCpuTargetPosition(
         [currentPos.current.x, currentPos.current.y, currentPos.current.z],
         ball,
@@ -230,7 +232,8 @@ export const Player3D: React.FC<Player3DProps> = ({
         server,
         serveSide,
         0,
-        isServeIncoming
+        isServeIncoming,
+        difficulty
       );
 
       const diffX = targetX - currentPos.current.x;

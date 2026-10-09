@@ -168,4 +168,86 @@ describe('tennisCpuAI Tactical System', () => {
       expect(shot.steeringX).toBe(0);
     }
   });
+
+  it('scales movement speed and positioning according to difficulty setting', () => {
+    const cpuPos: [number, number, number] = [0, 0, -12.35];
+    const ballPos: [number, number, number] = [1.5, 1.1, 4.0];
+    const ballVel: [number, number, number] = [1.0, 3.5, -16.0];
+
+    const amateurTarget = determineCpuTargetPosition(
+      cpuPos,
+      ballPos,
+      ballVel,
+      'playing',
+      'p1',
+      'deuce',
+      0,
+      false,
+      'amateur'
+    );
+
+    const proTarget = determineCpuTargetPosition(
+      cpuPos,
+      ballPos,
+      ballVel,
+      'playing',
+      'p1',
+      'deuce',
+      0,
+      false,
+      'pro'
+    );
+
+    const legendTarget = determineCpuTargetPosition(
+      cpuPos,
+      ballPos,
+      ballVel,
+      'playing',
+      'p1',
+      'deuce',
+      0,
+      false,
+      'legend'
+    );
+
+    // Amateur speed must be slower than Pro, and Pro slower than Legend
+    expect(amateurTarget.desiredSpeed).toBeLessThan(proTarget.desiredSpeed);
+    expect(proTarget.desiredSpeed).toBeLessThan(legendTarget.desiredSpeed);
+  });
+
+  it('scales shot depth and court placement aggressiveness based on difficulty', () => {
+    const cpuPos: [number, number, number] = [0, 0, -12.4];
+    const ballPos: [number, number, number] = [0, 1.1, -11.8];
+    const p1Pos: [number, number, number] = [0, 0, 12.0];
+    const reach = {
+      canHit: true,
+      shotType: 'drive' as const,
+      dx: 0.3,
+      reachRatio: 0.3,
+      isOverhead: false,
+    };
+
+    const amateurShots = Array.from({ length: 30 }, () =>
+      selectCpuShot(cpuPos, ballPos, p1Pos, reach, false, 'amateur')
+    );
+    const legendShots = Array.from({ length: 30 }, () =>
+      selectCpuShot(cpuPos, ballPos, p1Pos, reach, false, 'legend')
+    );
+
+    // Average amateur shot depth (targetZ) is significantly shallower than legend depth
+    const avgAmateurDepth =
+      amateurShots.reduce((sum, s) => sum + s.targetZ, 0) / amateurShots.length;
+    const avgLegendDepth =
+      legendShots.reduce((sum, s) => sum + s.targetZ, 0) / legendShots.length;
+
+    expect(avgAmateurDepth).toBeLessThan(avgLegendDepth);
+
+    // Amateur shots stay closer to the court center (smaller average |targetX|)
+    const avgAmateurWidth =
+      amateurShots.reduce((sum, s) => sum + Math.abs(s.targetX), 0) / amateurShots.length;
+    const avgLegendWidth =
+      legendShots.reduce((sum, s) => sum + Math.abs(s.targetX), 0) / legendShots.length;
+
+    expect(avgAmateurWidth).toBeLessThan(avgLegendWidth);
+  });
 });

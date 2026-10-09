@@ -250,4 +250,132 @@ describe('App Functional & Integration Tests', () => {
 
     expect(useTennisStore.getState().isMuted).toBe(false);
   });
+
+  it('opens and closes the Game Menu using HUD button and Escape key', () => {
+    render(<App />);
+
+    // Menu should be closed initially
+    expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
+
+    // Click on HUD Menu button
+    const menuBtn = screen.getByTestId('menu-toggle-btn');
+    act(() => {
+      fireEvent.click(menuBtn);
+    });
+
+    // Menu overlay is rendered
+    expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
+    expect(screen.getByText(/MENÚ DE PARTIDO & CONFIGURACIÓN/i)).toBeInTheDocument();
+    expect(useTennisStore.getState().isMenuOpen).toBe(true);
+    expect(useTennisStore.getState().isPaused).toBe(true);
+
+    // Resume button closes the menu
+    const resumeBtn = screen.getByTestId('resume-match-btn');
+    act(() => {
+      fireEvent.click(resumeBtn);
+    });
+    expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
+    expect(useTennisStore.getState().isMenuOpen).toBe(false);
+
+    // Pressing 'Escape' opens the menu again
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
+
+    // Pressing 'Escape' closes the menu
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
+  });
+
+  it('allows changing CPU difficulty in Game Menu', () => {
+    render(<App />);
+
+    // Open menu
+    act(() => {
+      useTennisStore.getState().setMenuOpen(true);
+    });
+
+    expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
+    expect(useTennisStore.getState().difficulty).toBe('pro');
+
+    // Select amateur
+    const amateurBtn = screen.getByTestId('difficulty-amateur');
+    act(() => {
+      fireEvent.click(amateurBtn);
+    });
+    expect(useTennisStore.getState().difficulty).toBe('amateur');
+
+    // Select legend
+    const legendBtn = screen.getByTestId('difficulty-legend');
+    act(() => {
+      fireEvent.click(legendBtn);
+    });
+    expect(useTennisStore.getState().difficulty).toBe('legend');
+  });
+
+  it('restarts match from Game Menu button', () => {
+    render(<App />);
+
+    // Simulate mid-game score
+    act(() => {
+      useTennisStore.setState({
+        p1Points: 3,
+        p2Points: 2,
+        rallyCount: 5,
+        isMenuOpen: true,
+      });
+    });
+
+    const restartBtn = screen.getByTestId('restart-match-btn');
+    act(() => {
+      fireEvent.click(restartBtn);
+    });
+
+    // Score and rally should be reset to 0, menu closed
+    expect(useTennisStore.getState().p1Points).toBe(0);
+    expect(useTennisStore.getState().p2Points).toBe(0);
+    expect(useTennisStore.getState().rallyCount).toBe(0);
+    expect(useTennisStore.getState().isMenuOpen).toBe(false);
+  });
+
+  it('renders MatchFinishOverlay with Winner and SlamTracker stats when match is over', () => {
+    render(<App />);
+
+    // P1 wins 2 sets to 0 with aces and serve speeds
+    act(() => {
+      useTennisStore.setState({
+        matchStatus: 'game_over',
+        p1Sets: 2,
+        p2Sets: 0,
+        p1Games: 6,
+        p2Games: 3,
+        p1Aces: 5,
+        p2Aces: 2,
+        maxServeSpeedP1: 218,
+        maxServeSpeedCpu: 204,
+      });
+    });
+
+    // Check finish overlay and winner
+    expect(screen.getByTestId('match-finish-overlay')).toBeInTheDocument();
+    const winnerTitle = screen.getByTestId('winner-title');
+    expect(winnerTitle).toHaveTextContent(/R\. NADAL \(ESP\) CAMPEÓN!/i);
+
+    // Verify stats
+    expect(screen.getByText(/ESTADÍSTICAS OFICIALES SLAMTRACKER/i)).toBeInTheDocument();
+    expect(screen.getByText('218 km/h')).toBeInTheDocument();
+    expect(screen.getByText('204 km/h')).toBeInTheDocument();
+
+    // Click "Jugar nuevo partido" resets the match
+    const newMatchBtn = screen.getByTestId('new-match-btn');
+    act(() => {
+      fireEvent.click(newMatchBtn);
+    });
+
+    expect(useTennisStore.getState().matchStatus).toBe('serve_prep');
+    expect(screen.queryByTestId('match-finish-overlay')).not.toBeInTheDocument();
+  });
 });

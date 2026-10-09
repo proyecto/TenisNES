@@ -91,6 +91,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
   useFrame((state) => {
     if (!ballBodyRef.current) return;
+    if (useTennisStore.getState().isPaused || useTennisStore.getState().isMenuOpen) return;
 
     const t = state.clock.getElapsedTime();
     const isActionJustPressed = keys.current.action && !prevActionPressed.current;
@@ -497,7 +498,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       ) {
         const p1Pos = useTennisStore.getState().p1Pos;
         const isServeReturn = isServeShot.current;
-        const decision = selectCpuShot(cpuPos, [ballPos.x, ballPos.y, ballPos.z], p1Pos, cpuReach, isServeReturn);
+        const difficulty = useTennisStore.getState().difficulty;
+        const decision = selectCpuShot(cpuPos, [ballPos.x, ballPos.y, ballPos.z], p1Pos, cpuReach, isServeReturn, difficulty);
         const cpuShotType = decision.shotType;
         lastShotType.current = cpuShotType;
 

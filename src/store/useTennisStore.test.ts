@@ -200,4 +200,63 @@ describe('useTennisStore', () => {
     useTennisStore.getState().setVolume(0.4);
     expect(useTennisStore.getState().volume).toBe(0.4);
   });
+
+  it('manages difficulty, pause state, and tournament menu open/close', () => {
+    expect(useTennisStore.getState().difficulty).toBe('pro');
+
+    useTennisStore.getState().setDifficulty('legend');
+    expect(useTennisStore.getState().difficulty).toBe('legend');
+
+    useTennisStore.getState().setDifficulty('amateur');
+    expect(useTennisStore.getState().difficulty).toBe('amateur');
+
+    // Opening menu also automatically pauses gameplay
+    useTennisStore.getState().setMenuOpen(true);
+    expect(useTennisStore.getState().isMenuOpen).toBe(true);
+    expect(useTennisStore.getState().isPaused).toBe(true);
+
+    useTennisStore.getState().setMenuOpen(false);
+    expect(useTennisStore.getState().isMenuOpen).toBe(false);
+    expect(useTennisStore.getState().isPaused).toBe(false);
+
+    useTennisStore.getState().setPaused(true);
+    expect(useTennisStore.getState().isPaused).toBe(true);
+  });
+
+  it('fully resets match state via resetMatch', () => {
+    useTennisStore.setState({
+      p1Points: 3,
+      p2Points: 2,
+      p1Games: 5,
+      p2Games: 4,
+      p1Sets: 1,
+      p2Sets: 1,
+      p1Aces: 4,
+      p2Aces: 3,
+      matchStatus: 'game_over',
+      rallyCount: 12,
+      isMenuOpen: true,
+      isPaused: true,
+      maxServeSpeedP1: 215,
+      maxServeSpeedCpu: 208,
+    });
+
+    useTennisStore.getState().resetMatch();
+
+    const state = useTennisStore.getState();
+    expect(state.p1Points).toBe(0);
+    expect(state.p2Points).toBe(0);
+    expect(state.p1Games).toBe(0);
+    expect(state.p2Games).toBe(0);
+    expect(state.p1Sets).toBe(0);
+    expect(state.p2Sets).toBe(0);
+    expect(state.p1Aces).toBe(0);
+    expect(state.p2Aces).toBe(0);
+    expect(state.rallyCount).toBe(0);
+    expect(state.matchStatus).toBe('serve_prep');
+    expect(state.isMenuOpen).toBe(false);
+    expect(state.isPaused).toBe(false);
+    expect(state.maxServeSpeedP1).toBe(0);
+    expect(state.maxServeSpeedCpu).toBe(0);
+  });
 });
