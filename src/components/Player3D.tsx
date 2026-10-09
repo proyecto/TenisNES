@@ -1,3 +1,12 @@
+/**
+ * @file Player3D.tsx
+ * @description Highly detailed 3D tennis player rig with full biomechanical kinematics:
+ * - Left-hand ball toss for service with trophy pose transition.
+ * - Dynamic forehand whip, two-handed backhand drive, smash overhead, and high lob arcs.
+ * - Procedural running gait cycle, sprint leaning, split-step crouching, and racket follow-through.
+ * - CPU autonomous AI with trajectory prediction, deep baseline rally, and net approach on drop shots.
+ */
+
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group, Vector3, MathUtils } from 'three';
@@ -169,7 +178,11 @@ export const Player3D: React.FC<Player3DProps> = ({
         currentPos.current.z = Math.max(3.8, Math.min(15.5, currentPos.current.z));
       }
 
-      useTennisStore.getState().p1Pos = [currentPos.current.x, currentPos.current.y, currentPos.current.z];
+      // Update coordinates in place to eliminate garbage collection pauses
+      const sP1 = useTennisStore.getState().p1Pos;
+      sP1[0] = currentPos.current.x;
+      sP1[1] = currentPos.current.y;
+      sP1[2] = currentPos.current.z;
 
       // Swing action listener (keyboard or ball hit trigger)
       if (p1SwingTrigger !== lastP1SwingTrigger.current) {
@@ -287,7 +300,11 @@ export const Player3D: React.FC<Player3DProps> = ({
       currentPos.current.x = Math.max(-6.2, Math.min(6.2, currentPos.current.x));
       currentPos.current.z = Math.max(-14.5, Math.min(-1.2, currentPos.current.z));
 
-      useTennisStore.getState().cpuPos = [currentPos.current.x, currentPos.current.y, currentPos.current.z];
+      // Update coordinates in place to eliminate garbage collection pauses
+      const sCpu = useTennisStore.getState().cpuPos;
+      sCpu[0] = currentPos.current.x;
+      sCpu[1] = currentPos.current.y;
+      sCpu[2] = currentPos.current.z;
 
       if (cpuSwingTrigger !== lastCpuSwingTrigger.current) {
         lastCpuSwingTrigger.current = cpuSwingTrigger;

@@ -1,15 +1,27 @@
 /**
- * Tennis ballistics utility for calculating realistic shot velocities
- * with proper net clearance, parabolic arc, and directional steering.
+ * @file tennisBallistics.ts
+ * @description Modulo de balistica y fisica de tiro para simulacion de tenis 3D.
+ * Implementa el patron de diseño Strategy para el calculo de trayectorias segun el tipo de golpe:
+ * - Saque (ServeStrategy)
+ * - Remate en juego (RallySmashStrategy)
+ * - Globo tactico/defensivo (LobStrategy)
+ * - Golpes de fondo: Drive y Reves (GroundstrokeStrategy)
  */
 
 export interface HitParameters {
+  /** Posicion tridimensional de contacto raqueta-pelota [x, y, z] en metros */
   fromPos: [number, number, number];
-  targetZ: number; // Opponent court depth (e.g. -8m to -11m)
-  targetX?: number; // Target lateral placement
-  steeringX?: number; // Player input steer: -1 (left), 0 (center), +1 (right)
-  steeringZ?: number; // Depth steer: +1 (adelante / fuerte), -1 (atrás / floja y corta), 0 (neutral)
+  /** Coordenada Z de destino en el campo rival (ej. -8m a -11m) */
+  targetZ: number;
+  /** Coordenada X lateral de destino (opcional, por defecto centro 0) */
+  targetX?: number;
+  /** Modulador de direccion horizontal: -1 (izquierda), 0 (centro), +1 (derecha) */
+  steeringX?: number;
+  /** Modulador de profundidad y potencia: +1 (adelante/fuerte), -1 (atras/dejada), 0 (neutral) */
+  steeringZ?: number;
+  /** Indica si el golpe corresponde a un saque oficial */
   isServe?: boolean;
+  /** Tipo de golpe seleccionado o detectado */
   shotType?: 'drive' | 'backhand' | 'smash' | 'lob';
 }
 
@@ -19,22 +31,33 @@ export interface ShotVelocity {
   z: number;
 }
 
-const GRAVITY = 9.81;
-const NET_Z = 0;
+export const GRAVITY = 9.81;
+export const NET_Z = 0;
 
 export interface HitReachResult {
+  /** Indica si la pelota esta dentro del alcance fisico del jugador */
   canHit: boolean;
+  /** Tipo de golpe sugerido segun la posicion relativa de la pelota */
   shotType: 'drive' | 'backhand' | 'smash';
+  /** Desplazamiento horizontal relativo respecto al centro del cuerpo */
   dx: number;
+  /** Ratio de distancia normalizada dentro de la elipse de alcance (<= 1.0 es alcanzable) */
   reachRatio: number;
+  /** Indica si la pelota se encuentra a una altura superior a 1.65m (susceptible de smash) */
   isOverhead: boolean;
 }
 
 /**
- * Evaluates whether a tennis ball is within reach using a compact, athletic asymmetric oval base:
- * - Right side (Forehand / Drive): 1-handed reach (~1.65m)
- * - Left side (Backhand / Revés): 2-handed reach (~1.15m)
- * - Tight depth window along direction of play (-0.40m to +1.25m)
+ * Evalua si una pelota de tenis se encuentra dentro del alcance anatomico del tenista
+ * utilizando una elipse asimetrica de reach y un umbral vertical:
+ * - Lado derecho (Drive): alcance a una mano (~1.95m).
+ * - Lado izquierdo (Reves): alcance a dos manos compacto (~1.15m).
+ * - Bola alta (>= 1.65m): susceptible de remate overhead (Smash).
+ *
+ * @param playerPos Posicion [x, y, z] del jugador en la pista.
+ * @param ballPos Posicion [x, y, z] actual de la pelota.
+ * @param isOpponent True si el evaluado es el jugador rival (orientacion invertida).
+ * @returns Resultado con alcanzabilidad, tipo de golpe sugerido y detalles biometricos.
  */
 export function evaluateHitReach(
   playerPos: [number, number, number],
@@ -44,8 +67,8 @@ export function evaluateHitReach(
   const dx = ballPos[0] - playerPos[0];
   const dz = ballPos[2] - playerPos[2];
 
-  // For Player 1 (facing net at -Z): right side (derecha/drive) is strictly dx >= 0
-  // For Opponent (facing P1 at +Z): right side (derecha/drive) is strictly dx <= 0
+  // Para el Jugador 1 (mira a -Z): derecha es dx >= 0
+  // Para el Rival (mira a +Z): derecha es dx <= 0
   const isRightHandSide = isOpponent ? dx <= 0 : dx >= 0;
   const isOverhead = ballPos[1] >= 1.65;
   const shotType: 'drive' | 'backhand' | 'smash' = isOverhead
@@ -54,13 +77,10 @@ export function evaluateHitReach(
       ? 'drive'
       : 'backhand';
 
-  // Asymmetric horizontal reach:
-  // Drive (1 mano a la derecha): gran alcance (~1.95m)
-  // Backhand (2 manos a la izquierda): alcance corto y compacto (~1.15m)
-  // Smash (overhead vertical): alcance aéreo (~1.80m)
+  // Envolvente horizontal asimetrica segun tipo de golpe
   const maxReachX = isOverhead ? 1.80 : isRightHandSide ? 1.95 : 1.15;
 
-  // Front-back reach along direction of play
+  // Rango de profundidad a lo largo del eje de juego
   const forwardDz = isOpponent ? dz : -dz;
   const inFront = forwardDz >= -0.45 && forwardDz <= 1.30;
 
@@ -68,7 +88,7 @@ export function evaluateHitReach(
   const normZ = forwardDz >= 0 ? forwardDz / 1.30 : Math.abs(forwardDz) / 0.45;
   const ellipseDist = Math.sqrt(normX * normX + normZ * normZ);
 
-  // Height envelope: ball must be within reachable height [0.15m, 2.45m]
+  // Envolvente vertical de golpeo: [0.15m, 2.45m]
   const inHeight = ballPos[1] >= 0.15 && ballPos[1] <= 2.45;
   const canHit = inFront && inHeight && ellipseDist <= 1.0;
 
@@ -81,44 +101,40 @@ export function evaluateHitReach(
   };
 }
 
-export function calculateShotVelocity({
-  fromPos,
-  targetZ,
-  targetX = 0,
-  steeringX = 0,
-  steeringZ = 0,
-  isServe = false,
-  shotType = 'drive',
-}: HitParameters): ShotVelocity {
-  const [x0, y0, z0] = fromPos;
-  const isMovingForward = targetZ < z0;
+// =============================================================================
+// PATRON DE DISEÑO: STRATEGY PATTERN PARA BALISTICA DE TIROS
+// =============================================================================
 
-  if (isServe) {
-    // 1. Tennis serve: analytic trajectory connecting (x0, y0, z0)
-    // to (targetX, yLand = 0.08, targetZ)
-    const dzTotal = targetZ - z0;
+export interface IShotStrategy {
+  calculate(params: HitParameters): ShotVelocity;
+}
+
+/**
+ * Estrategia de Saque:
+ * Conecta analiticamente la altura de impacto del toss con la red y el cuadro de servicio diagonal.
+ */
+export class ServeStrategy implements IShotStrategy {
+  calculate(params: HitParameters): ShotVelocity {
+    const [x0, y0, z0] = params.fromPos;
+    const targetX = params.targetX ?? 0;
+    const steeringZ = params.steeringZ ?? 0;
+
+    const dzTotal = params.targetZ - z0;
     const absDzTotal = Math.abs(dzTotal);
-
     const distToNet = Math.abs(z0 - NET_Z);
     const alpha = Math.max(0.15, Math.min(0.92, distToNet / Math.max(1.0, absDzTotal)));
 
-    // Net clearance depends on strike height y0 and depth steering:
-    // - High overhead strike (y0 >= 2.35m): clears comfortably (1.15m - 1.35m)
-    // - Late toss strike (y0 < 2.15m): launch angle is too flat/downward, crashes into the net (0.75m - 0.88m)!
-    // - Forward push (steeringZ > 0): flatter cannon trajectory, tight margin over tape
+    // La altura sobre la red depende de la altura de impacto y del steering
     let yNetTarget = 1.25;
     if (y0 < 2.15) {
-      // Late strike on falling toss: crashes into the net!
       yNetTarget = 0.78 + (y0 - 1.6) * 0.25;
     } else if (steeringZ > 0) {
-      // Aggressive flat drive serve: tight margin
       yNetTarget = y0 < 2.4 ? 0.88 : 1.10;
     } else {
       yNetTarget = 1.22 + (y0 - 2.2) * 0.25;
     }
 
     const yLand = 0.08;
-
     const num = yNetTarget - (1 - alpha) * y0 - alpha * yLand;
     const den = 0.5 * GRAVITY * alpha * (1 - alpha);
 
@@ -138,13 +154,24 @@ export function calculateShotVelocity({
 
     const vz = dzTotal / tLand;
     const vx = (targetX - x0) / tLand;
-
     return { x: vx, y: vy, z: vz };
   }
+}
 
-  if (shotType === 'smash') {
-    // 2. Overhead Smash during rally: explosive downward hammer strike!
-    const speedZ = 28.5; // Fast downward plunge
+/**
+ * Estrategia de Remate Smash en Peloteo:
+ * Martillazo descendente a gran velocidad (~28.5 m/s) que asegura superar la cinta de la red.
+ */
+export class RallySmashStrategy implements IShotStrategy {
+  calculate(params: HitParameters): ShotVelocity {
+    const [x0, y0, z0] = params.fromPos;
+    const targetX = params.targetX ?? 0;
+    const steeringX = params.steeringX ?? 0;
+    const steeringZ = params.steeringZ ?? 0;
+
+    const isMovingForward = params.targetZ < z0;
+    const speedZ = 28.5;
+
     let effectiveTargetZ = isMovingForward ? -8.2 : 8.2;
     if (steeringZ > 0) {
       effectiveTargetZ = isMovingForward ? -10.2 : 10.2;
@@ -157,7 +184,6 @@ export function calculateShotVelocity({
     const tLand = Math.max(0.35, absDzTotal / speedZ);
     const yLand = 0.08;
 
-    // Ensure ball safely clears the net tape (at least 1.10m clearance)
     const tNet = distToNet / speedZ;
     const minNetHeight = 1.10;
     const vyNetReq = (minNetHeight - y0 + 0.5 * GRAVITY * tNet * tNet) / Math.max(0.05, tNet);
@@ -171,16 +197,27 @@ export function calculateShotVelocity({
 
     return { x: vx, y: vy, z: vz };
   }
+}
 
-  if (shotType === 'lob') {
-    // 3. Globo (Lob): High-arching tactical shot flying over net rushers deep into baseline
+/**
+ * Estrategia de Globo (Lob):
+ * Elevacion parabolica alta (5.5m - 6.5m) que sobrepasa a rivales subidos a la red
+ * y cae profundamente en la linea de fondo.
+ */
+export class LobStrategy implements IShotStrategy {
+  calculate(params: HitParameters): ShotVelocity {
+    const [x0, y0, z0] = params.fromPos;
+    const targetX = params.targetX ?? 0;
+    const steeringX = params.steeringX ?? 0;
+    const steeringZ = params.steeringZ ?? 0;
+
+    const isMovingForward = params.targetZ < z0;
     const speedZ = steeringZ > 0 ? 13.5 : steeringZ < 0 ? 10.2 : 11.8;
     const effectiveTargetZ = isMovingForward ? -10.6 : 10.6;
     const absDzTotal = Math.abs(effectiveTargetZ - z0);
     const flightTime = Math.max(1.3, absDzTotal / speedZ);
 
     const yLand = 0.08;
-    // Parabolic vy so it reaches 5.5m - 6.5m apex and drops inside baseline
     const vy = (yLand - y0 + 0.5 * GRAVITY * flightTime * flightTime) / flightTime;
     const vz = isMovingForward ? -speedZ : speedZ;
 
@@ -190,78 +227,94 @@ export function calculateShotVelocity({
 
     return { x: vx, y: vy, z: vz };
   }
+}
 
-  // 2. Regular rally shots: DRIVE (Right hand) vs BACKHAND (Revés / Left side)
-  const isDrive = shotType === 'drive';
+/**
+ * Estrategia de Golpes de Fondo (Drive y Reves):
+ * Balistica parabolica tensa con diferenciacion de velocidad y angulo segun derecha/reves.
+ */
+export class GroundstrokeStrategy implements IShotStrategy {
+  calculate(params: HitParameters): ShotVelocity {
+    const [x0, y0, z0] = params.fromPos;
+    const targetX = params.targetX ?? 0;
+    const steeringX = params.steeringX ?? 0;
+    const steeringZ = params.steeringZ ?? 0;
+    const isDrive = params.shotType === 'drive';
 
-  let speedZ = isDrive ? 18.0 : 14.0;
-  let effectiveTargetZ = targetZ;
+    const isMovingForward = params.targetZ < z0;
+    let speedZ = isDrive ? 18.0 : 14.0;
+    let effectiveTargetZ = params.targetZ;
 
-  // Realistic Net Clearance depending on contact height y0 and shot type:
-  // Net height is 0.914m at center and 1.07m at posts.
-  // - Waist/Chest height (y0 >= 0.85m): normal clearance (1.25m - 1.45m)
-  // - Low contact (y0 < 0.65m):
-  //   * If hitting with forward power (steeringZ > 0): cannot lift in time, hits the net (0.80m - 0.88m)!
-  //   * If neutral: tight clearance (1.05m)
-  // - Drop shot from deep baseline (|z0| > 12.0m && steeringZ < 0): falls into the net!
-  let clearance = isDrive ? 1.30 : 1.38;
+    let clearance = isDrive ? 1.30 : 1.38;
 
-  if (steeringZ > 0) {
-    // Adelante: Tiro tenso, potente y plano
-    speedZ = isDrive ? 22.0 : 17.0;
-    effectiveTargetZ = isMovingForward ? -10.8 : 10.8;
-    if (y0 < 0.65) {
-      // Hitting a very low ball flat forward: crashes into the net!
-      clearance = 0.82;
+    if (steeringZ > 0) {
+      speedZ = isDrive ? 22.0 : 17.0;
+      effectiveTargetZ = isMovingForward ? -10.8 : 10.8;
+      clearance = y0 < 0.65 ? 0.82 : 1.12;
+    } else if (steeringZ < 0) {
+      speedZ = isDrive ? 11.5 : 9.5;
+      effectiveTargetZ = isMovingForward ? -3.2 : 3.2;
+      clearance = Math.abs(z0) > 12.0 ? 0.84 : 1.25;
     } else {
-      clearance = 1.12;
+      clearance = y0 < 0.50 ? 0.86 : isDrive ? 1.30 : 1.38;
     }
-  } else if (steeringZ < 0) {
-    // Atrás: Dejada corta
-    speedZ = isDrive ? 11.5 : 9.5;
-    effectiveTargetZ = isMovingForward ? -3.2 : 3.2;
-    if (Math.abs(z0) > 12.0) {
-      // Drop shot attempted from too deep: dies in the net!
-      clearance = 0.84;
+
+    const vz = isMovingForward ? -speedZ : speedZ;
+    const timeToNet = Math.abs(z0 - NET_Z) / speedZ;
+    const totalFlightTime = Math.abs(z0 - effectiveTargetZ) / speedZ;
+
+    const requiredVyForNet =
+      (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / Math.max(0.1, timeToNet);
+    const yGround = 0.08;
+    const requiredVyForLanding =
+      (yGround - y0 + 0.5 * GRAVITY * totalFlightTime * totalFlightTime) / Math.max(0.1, totalFlightTime);
+
+    let vy: number;
+    if (clearance < 0.914) {
+      vy = requiredVyForNet;
     } else {
-      clearance = 1.25;
+      const baseMinVy = steeringZ < 0 ? 3.0 : isDrive ? 3.8 : 4.2;
+      vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
     }
-  } else {
-    // Neutral shot:
-    if (y0 < 0.50) {
-      clearance = 0.86;
-    } else {
-      clearance = isDrive ? 1.30 : 1.38;
-    }
+
+    const steerMultiplier = isDrive ? 3.6 : 2.0;
+    const effectiveTargetX = targetX + steeringX * steerMultiplier;
+    const vx = (effectiveTargetX - x0) / Math.max(0.1, totalFlightTime);
+
+    return { x: vx, y: vy, z: vz };
   }
+}
 
-  const vz = isMovingForward ? -speedZ : speedZ;
-  const timeToNet = Math.abs(z0 - NET_Z) / speedZ;
-  const totalFlightTime = Math.abs(z0 - effectiveTargetZ) / speedZ;
+// Instancias unicas de estrategias (patron Singleton / Flyweight)
+const serveStrategy = new ServeStrategy();
+const rallySmashStrategy = new RallySmashStrategy();
+const lobStrategy = new LobStrategy();
+const groundstrokeStrategy = new GroundstrokeStrategy();
 
-  // 1. Calculate required vy for the chosen clearance
-  const requiredVyForNet =
-    (clearance - y0 + 0.5 * GRAVITY * timeToNet * timeToNet) / Math.max(0.1, timeToNet);
-
-  // 2. Calculate ideal parabolic vy so the shot descends deep into opponent's baseline (y ≈ 0.08m)
-  const yGround = 0.08;
-  const requiredVyForLanding =
-    (yGround - y0 + 0.5 * GRAVITY * totalFlightTime * totalFlightTime) / Math.max(0.1, totalFlightTime);
-
-  // When clearance < 0.914m (net fault intended), do not override with landing vy!
-  let vy: number;
-  if (clearance < 0.914) {
-    vy = requiredVyForNet;
-  } else {
-    const baseMinVy = steeringZ < 0 ? 3.0 : (isDrive ? 3.8 : 4.2);
-    vy = Math.max(requiredVyForNet, requiredVyForLanding, baseMinVy);
+/**
+ * Resuelve la estrategia adecuada de disparo segun los parametros de entrada.
+ */
+export function resolveShotStrategy(params: HitParameters): IShotStrategy {
+  if (params.isServe) {
+    return serveStrategy;
   }
+  if (params.shotType === 'smash') {
+    return rallySmashStrategy;
+  }
+  if (params.shotType === 'lob') {
+    return lobStrategy;
+  }
+  return groundstrokeStrategy;
+}
 
-  // Lateral steering:
-  // Forehand (Drive) generates sharper cross-court angles (3.6) vs Backhand (2.0)
-  const steerMultiplier = isDrive ? 3.6 : 2.0;
-  const effectiveTargetX = targetX + steeringX * steerMultiplier;
-  const vx = (effectiveTargetX - x0) / Math.max(0.1, totalFlightTime);
-
-  return { x: vx, y: vy, z: vz };
+/**
+ * Punto de entrada publico para calcular el vector tridimensional de velocidad inicial
+ * requerido para que la pelota cumpla su trayectoria balistica.
+ *
+ * @param params Parametros de posicion, destino, moduladores y tipo de golpe.
+ * @returns Vector tridimensional de velocidad inicial { x, y, z }.
+ */
+export function calculateShotVelocity(params: HitParameters): ShotVelocity {
+  const strategy = resolveShotStrategy(params);
+  return strategy.calculate(params);
 }

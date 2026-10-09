@@ -19,6 +19,18 @@ function pseudoRand(seed: number) {
   return x - Math.floor(x);
 }
 
+// Balanced, dark & muted crowd clothing palette (avoids bright white glare)
+const SHIRT_PALETTE = [
+  '#1e3a8a', '#1e40af', '#1e293b', '#334155', '#475569',
+  '#14532d', '#166534', '#064e3b', '#7f1d1d', '#991b1b',
+  '#b45309', '#9a3412', '#c2410c', '#0f766e', '#0369a1',
+  '#2563eb', '#374151', '#4b5563', '#64748b', '#78716c',
+  '#57534e', '#3f6212', '#0f172a', '#d6d3d1', '#94a3b8'
+];
+
+const SKIN_TONES = ['#f8d7b8', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
+const PANTS_PALETTE = ['#0f172a', '#1e293b', '#18181b', '#27272a', '#1e3a8a', '#3f3f46'];
+
 export const StadiumAtmosphere3D: React.FC = () => {
   const crowdGroupRef = useRef<THREE.Group>(null);
   const umpireHeadRef = useRef<THREE.Group>(null);
@@ -42,18 +54,6 @@ export const StadiumAtmosphere3D: React.FC = () => {
       crowdGroupRef.current.position.y = Math.sin(t * 2.2) * 0.015;
     }
   });
-
-  // Balanced, dark & muted crowd clothing palette (avoids bright white glare)
-  const shirtPalette = [
-    '#1e3a8a', '#1e40af', '#1e293b', '#334155', '#475569',
-    '#14532d', '#166534', '#064e3b', '#7f1d1d', '#991b1b',
-    '#b45309', '#9a3412', '#c2410c', '#0f766e', '#0369a1',
-    '#2563eb', '#374151', '#4b5563', '#64748b', '#78716c',
-    '#57534e', '#3f6212', '#0f172a', '#d6d3d1', '#94a3b8'
-  ];
-
-  const skinTones = ['#f8d7b8', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
-  const pantsPalette = ['#0f172a', '#1e293b', '#18181b', '#27272a', '#1e3a8a', '#3f3f46'];
 
   // Procedural generation of ~1,400 spectators across North, West, East and the 2 rounded corners
   const { spectators, hats } = useMemo(() => {
@@ -99,9 +99,9 @@ export const StadiumAtmosphere3D: React.FC = () => {
         const rotY = (pseudoRand(seed * 4) - 0.5) * 0.25;
         const leanX = (pseudoRand(seed * 5) - 0.5) * 0.12;
 
-        const shirt = shirtPalette[Math.floor(pseudoRand(seed * 6) * shirtPalette.length)];
-        const skin = skinTones[Math.floor(pseudoRand(seed * 7) * skinTones.length)];
-        const pants = pantsPalette[Math.floor(pseudoRand(seed * 8) * pantsPalette.length)];
+        const shirt = SHIRT_PALETTE[Math.floor(pseudoRand(seed * 6) * SHIRT_PALETTE.length)];
+        const skin = SKIN_TONES[Math.floor(pseudoRand(seed * 7) * SKIN_TONES.length)];
+        const pants = PANTS_PALETTE[Math.floor(pseudoRand(seed * 8) * PANTS_PALETTE.length)];
 
         const scaleY = 0.92 + pseudoRand(seed * 9) * 0.16;
         const specY = y + jitterY;
@@ -153,9 +153,9 @@ export const StadiumAtmosphere3D: React.FC = () => {
         const rotY = Math.PI / 2 + (pseudoRand(seed * 4) - 0.5) * 0.25;
         const leanX = (pseudoRand(seed * 5) - 0.5) * 0.12;
 
-        const shirt = shirtPalette[Math.floor(pseudoRand(seed * 6) * shirtPalette.length)];
-        const skin = skinTones[Math.floor(pseudoRand(seed * 7) * skinTones.length)];
-        const pants = pantsPalette[Math.floor(pseudoRand(seed * 8) * pantsPalette.length)];
+        const shirt = SHIRT_PALETTE[Math.floor(pseudoRand(seed * 6) * SHIRT_PALETTE.length)];
+        const skin = SKIN_TONES[Math.floor(pseudoRand(seed * 7) * SKIN_TONES.length)];
+        const pants = PANTS_PALETTE[Math.floor(pseudoRand(seed * 8) * PANTS_PALETTE.length)];
         const scaleY = 0.92 + pseudoRand(seed * 9) * 0.16;
         const specX = x + jitterX;
         const specY = y + jitterY;
@@ -205,9 +205,9 @@ export const StadiumAtmosphere3D: React.FC = () => {
         const rotY = -Math.PI / 2 + (pseudoRand(seed * 4) - 0.5) * 0.25;
         const leanX = (pseudoRand(seed * 5) - 0.5) * 0.12;
 
-        const shirt = shirtPalette[Math.floor(pseudoRand(seed * 6) * shirtPalette.length)];
-        const skin = skinTones[Math.floor(pseudoRand(seed * 7) * skinTones.length)];
-        const pants = pantsPalette[Math.floor(pseudoRand(seed * 8) * pantsPalette.length)];
+        const shirt = SHIRT_PALETTE[Math.floor(pseudoRand(seed * 6) * SHIRT_PALETTE.length)];
+        const skin = SKIN_TONES[Math.floor(pseudoRand(seed * 7) * SKIN_TONES.length)];
+        const pants = PANTS_PALETTE[Math.floor(pseudoRand(seed * 8) * PANTS_PALETTE.length)];
         const scaleY = 0.92 + pseudoRand(seed * 9) * 0.16;
         const specX = x + jitterX;
         const specY = y + jitterY;
@@ -260,9 +260,9 @@ export const StadiumAtmosphere3D: React.FC = () => {
         const rotY = Math.atan2(-x, -z);
         const leanX = (pseudoRand(seed * 2) - 0.5) * 0.12;
 
-        const shirt = shirtPalette[Math.floor(pseudoRand(seed * 3) * shirtPalette.length)];
-        const skin = skinTones[Math.floor(pseudoRand(seed * 4) * skinTones.length)];
-        const pants = pantsPalette[Math.floor(pseudoRand(seed * 5) * pantsPalette.length)];
+        const shirt = SHIRT_PALETTE[Math.floor(pseudoRand(seed * 3) * SHIRT_PALETTE.length)];
+        const skin = SKIN_TONES[Math.floor(pseudoRand(seed * 4) * SKIN_TONES.length)];
+        const pants = PANTS_PALETTE[Math.floor(pseudoRand(seed * 5) * PANTS_PALETTE.length)];
         const scaleY = 0.92 + pseudoRand(seed * 6) * 0.16;
 
         specList.push({
@@ -312,9 +312,9 @@ export const StadiumAtmosphere3D: React.FC = () => {
         const rotY = Math.atan2(-x, -z);
         const leanX = (pseudoRand(seed * 2) - 0.5) * 0.12;
 
-        const shirt = shirtPalette[Math.floor(pseudoRand(seed * 3) * shirtPalette.length)];
-        const skin = skinTones[Math.floor(pseudoRand(seed * 4) * skinTones.length)];
-        const pants = pantsPalette[Math.floor(pseudoRand(seed * 5) * pantsPalette.length)];
+        const shirt = SHIRT_PALETTE[Math.floor(pseudoRand(seed * 3) * SHIRT_PALETTE.length)];
+        const skin = SKIN_TONES[Math.floor(pseudoRand(seed * 4) * SKIN_TONES.length)];
+        const pants = PANTS_PALETTE[Math.floor(pseudoRand(seed * 5) * PANTS_PALETTE.length)];
         const scaleY = 0.92 + pseudoRand(seed * 6) * 0.16;
 
         specList.push({

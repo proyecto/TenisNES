@@ -1,35 +1,59 @@
 /**
- * Official International Tennis Federation (ITF) scoring and court rules:
- * - Regulation singles dimensions:
- *   - Net at Z = 0
- *   - Singles sidelines: X = ±4.115m
- *   - Baselines: Z = ±11.89m
- *   - Service lines: Z = ±6.40m
- *   - Center service line: X = 0
- * - Server alternates every game.
- * - Every new game starts serving from the DEUCE side (right side of center mark).
- * - Within a game, serve side alternates every point (even points = Deuce, odd = Ad).
- * - A serve must bounce in the correct diagonal service box before the receiver can hit it.
- * - Sets: 6 games with a margin of 2 (or 7-5 / 7-6 tiebreak).
+ * @file tennisScoring.ts
+ * @description Official International Tennis Federation (ITF) scoring engine and court geometry bounds.
+ *
+ * ## ITF Regulation Singles Geometry:
+ * - Court Length: 23.77m (Baselines at Z = ±11.885m / rounded ±11.89m)
+ * - Singles Width: 8.23m (Sidelines at X = ±4.115m)
+ * - Service Line: 6.40m from net (Z = ±6.40m)
+ * - Center Service Line: X = 0 (divides deuce and ad service boxes)
+ * - Net: Located at Z = 0 with height 0.914m at center and 1.07m at posts.
+ *
+ * ## Serving & Scoring Rules:
+ * - Server alternates after each completed game.
+ * - Every new game starts with a serve from the DEUCE court (right of center mark).
+ * - Within a game, serve side alternates every point (even score points = Deuce, odd = Ad).
+ * - A serve must bounce diagonally within the opponent's correct service box before being struck.
+ * - Let (ITF Rule 22): If a serve clips the net tape and lands legally in the target box, it is replayed.
  */
 
+/**
+ * Parameters for court boundary check.
+ */
 export interface CourtBoundsCheck {
+  /** X coordinate of bounce in meters */
   x: number;
+  /** Z coordinate of bounce in meters */
   z: number;
+  /** True if the stroke was an initial serve */
   isServe: boolean;
+  /** Current court side for the serve ('deuce' or 'ad') */
   serveSide: 'deuce' | 'ad';
+  /** Player who hit the ball ('p1' or 'cpu') */
   hitter: 'p1' | 'cpu';
 }
 
+/**
+ * Result of bounce evaluation against court geometry and active game rules.
+ */
 export interface BounceEvaluation {
+  /** True if the ball landed inside legal boundaries */
   isInBounds: boolean;
+  /** True if the bounce constitutes a serve fault */
   isFault: boolean;
+  /** Official umpire message corresponding to the bounce */
   callMessage: string;
 }
 
+/**
+ * Official ITF court geometric limits (in meters).
+ */
 export const COURT_LIMITS = {
+  /** Half-width of singles court (meters from center line) */
   SINGLES_WIDTH: 4.115,
+  /** Distance from net to baseline (meters) */
   BASELINE_DEPTH: 11.89,
+  /** Distance from net to service line (meters) */
   SERVICE_DEPTH: 6.40,
 };
 
@@ -112,32 +136,66 @@ export function evaluateBounce({
   }
 }
 
+/**
+ * Input state for point calculation containing current scores.
+ */
 export interface ScoreStatePoints {
-  p1Points: number; // 0=0, 1=15, 2=30, 3=40, 4=Ad
+  /** P1 points index (0: 0, 1: 15, 2: 30, 3: 40, 4: Ad) */
+  p1Points: number;
+  /** P2 / CPU points index (0: 0, 1: 15, 2: 30, 3: 40, 4: Ad) */
   p2Points: number;
+  /** P1 games won in current set */
   p1Games: number;
+  /** P2 games won in current set */
   p2Games: number;
+  /** P1 sets won */
   p1Sets?: number;
+  /** P2 sets won */
   p2Sets?: number;
+  /** Current serving player */
   server?: 'p1' | 'cpu';
 }
 
+/**
+ * Result of scoring a point, including updated game/set counters and server alternation.
+ */
 export interface PointAwardResult {
+  /** Updated P1 points index */
   p1Points: number;
+  /** Updated P2 points index */
   p2Points: number;
+  /** Updated P1 games won */
   p1Games: number;
+  /** Updated P2 games won */
   p2Games: number;
+  /** Updated P1 sets won */
   p1Sets: number;
+  /** Updated P2 sets won */
   p2Sets: number;
+  /** Winner of the game if a game concluded, otherwise null */
   gameWon: 'p1' | 'cpu' | null;
+  /** Winner of the set if a set concluded, otherwise null */
   setWon: 'p1' | 'cpu' | null;
+  /** Winner of the match if a match concluded, otherwise null */
   matchWon: 'p1' | 'cpu' | null;
+  /** Serving player for the next point / game */
   nextServer: 'p1' | 'cpu';
+  /** Official tournament announcement string */
   announcement: string;
 }
 
 /**
  * Calculates official tennis score progression (Points 15-30-40-Deuce-Ad, Games, Sets, Server Alternation).
+ *
+ * Implements standard ITF rules:
+ * - Advantage / Deuce logic when score reaches 40-40.
+ * - Game progression and reset upon 2-point lead.
+ * - Set progression with standard margin of 2 games, or 7-5 / 7-6 tiebreaks.
+ * - Server switching on every completed game.
+ *
+ * @param current Current scoring state.
+ * @param winner The player who won the point ('p1' or 'cpu').
+ * @returns Resulting points, games, sets, winners, next server, and announcement.
  */
 export function calculatePointProgression(
   current: ScoreStatePoints,

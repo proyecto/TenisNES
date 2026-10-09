@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { useTennisStore } from '../store/useTennisStore';
 
@@ -31,9 +31,6 @@ export const WimbledonScoreboard3D: React.FC<WimbledonScoreboard3DProps> = ({
   const server = useTennisStore((state) => state.server);
   const lastSpeedKmh = useTennisStore((state) => state.lastSpeedKmh);
   const rallyCount = useTennisStore((state) => state.rallyCount);
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const textureRef = useRef<THREE.CanvasTexture | null>(null);
 
   // Format points according to official Wimbledon court scoreboard (0, 15, 30, 40, A)
   const formatScorePoints = (pts: number) => {
@@ -383,22 +380,34 @@ export const WimbledonScoreboard3D: React.FC<WimbledonScoreboard3DProps> = ({
     [p1Points, p2Points, p1Games, p2Games, p1Sets, p2Sets, server, lastSpeedKmh, rallyCount]
   );
 
-  // Initialize Canvas and Three.js Texture with IMMEDIATE first paint
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2048;
-    canvas.height = 860;
-    canvasRef.current = canvas;
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const textureRef = useRef<THREE.CanvasTexture | null>(null);
 
-    renderCanvas(canvas);
+  // Initialize Canvas, Texture and attach to Material on mount
+  useEffect(() => {
+    const c = document.createElement('canvas');
+    c.width = 2048;
+    c.height = 860;
+    canvasRef.current = c;
 
-    const tex = new THREE.CanvasTexture(canvas);
+    const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
     textureRef.current = tex;
-    return tex;
+
+    renderCanvas(c);
+    tex.needsUpdate = true;
+
+    if (materialRef.current) {
+      materialRef.current.map = tex;
+      materialRef.current.needsUpdate = true;
+    }
+
+    return () => {
+      tex.dispose();
+    };
   }, [renderCanvas]);
 
   // Update canvas on score/match changes
@@ -426,7 +435,7 @@ export const WimbledonScoreboard3D: React.FC<WimbledonScoreboard3DProps> = ({
       {/* 3. Electronic Screen Face */}
       <mesh position={[0, -0.06, 0.22]}>
         <planeGeometry args={[9.0, 3.65]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
+        <meshBasicMaterial ref={materialRef} toneMapped={false} />
       </mesh>
 
       {/* 4. Steel Mounting Struts anchoring to the Wall Top */}

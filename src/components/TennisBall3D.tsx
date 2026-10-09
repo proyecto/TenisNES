@@ -1,3 +1,15 @@
+/**
+ * @file TennisBall3D.tsx
+ * @description Tennis ball physics engine, stroke hitboxes, service mechanics, continuous
+ * collision detection, net collision/deflection, Hawk-Eye bounce tracking, and ITF rule enforcement.
+ *
+ * ## Core Physics & Ballistics:
+ * - Dynamic Rapier 3D rigid body with Magnus topspin effect, air drag, and coefficient of restitution.
+ * - Serve toss kinematics, overhead smash timing window, and diagonal target box check.
+ * - Net tape collision with realistic grazing vs mesh dead stop (ITF Rule 22 Net / Let).
+ * - Automatic point resolution after double bounce or out-of-bounds landing.
+ */
+
 import React, { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody } from '@react-three/rapier';
@@ -7,6 +19,9 @@ import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { calculateShotVelocity, evaluateHitReach } from '../utils/tennisBallistics';
 import { evaluateBounce } from '../utils/tennisScoring';
 
+/**
+ * Optional callback fired on ball bounce or net deflection.
+ */
 interface TennisBall3DProps {
   onBounce?: () => void;
 }
@@ -85,9 +100,15 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     const ballVel = ballBodyRef.current.linvel();
     const { p1Pos: p1, cpuPos, server, serveSide } = useTennisStore.getState();
 
-    // Sync current ball position and velocity transiently
-    useTennisStore.getState().ballPos = [ballPos.x, ballPos.y, ballPos.z];
-    useTennisStore.getState().ballVel = [ballVel.x, ballVel.y, ballVel.z];
+    // Sync current ball position and velocity in-place to avoid garbage collection allocations
+    const sBallPos = useTennisStore.getState().ballPos;
+    sBallPos[0] = ballPos.x;
+    sBallPos[1] = ballPos.y;
+    sBallPos[2] = ballPos.z;
+    const sBallVel = useTennisStore.getState().ballVel;
+    sBallVel[0] = ballVel.x;
+    sBallVel[1] = ballVel.y;
+    sBallVel[2] = ballVel.z;
 
     // =========================================================================
     // PHYSICAL TENNIS NET COLLISION & DEFLECTION

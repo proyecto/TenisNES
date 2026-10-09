@@ -1,60 +1,144 @@
 import { create } from 'zustand';
 import { calculatePointProgression } from '../utils/tennisScoring';
 
+/**
+ * @file useTennisStore.ts
+ * @description Centralized Zustand state container implementing the Tennis Finite State Machine (FSM),
+ * match scoring (ITF standard), player positioning, shot tracking, and Hawk-Eye bounce logging.
+ *
+ * ## Tennis Match State Machine (FSM)
+ * ```
+ *                 ┌────────────────┐
+ *                 │   serve_prep   │◄──────────────┐
+ *                 └───────┬────────┘               │
+ *                         │ [Ball Toss]            │
+ *                         ▼                        │
+ *                 ┌────────────────┐               │
+ *                 │    serving     │               │
+ *                 └───────┬────────┘               │
+ *             [Hit Serve] │                        │
+ *                         ▼                        │
+ *                 ┌────────────────┐               │
+ *                 │    playing     │               │
+ *                 └───────┬────────┘               │
+ *            [Point/Fault]│                        │
+ *                         ▼                        │
+ *                 ┌────────────────┐               │
+ *                 │   point_over   ├───────────────┘
+ *                 └───────┬────────┘ (Reset serve)
+ *            [Match Point]│
+ *                         ▼
+ *                 ┌────────────────┐
+ *                 │   game_over    │
+ *                 └────────────────┘
+ * ```
+ */
+
 export interface ScoreState {
-  p1Points: number; // 0, 15, 30, 40, Ad (0..4)
+  /** P1 current game points: 0, 15 (1), 30 (2), 40 (3), AD (4) */
+  p1Points: number;
+  /** CPU / P2 current game points: 0, 15 (1), 30 (2), 40 (3), AD (4) */
   p2Points: number;
+  /** Games won by Player 1 in the current set */
   p1Games: number;
+  /** Games won by Player 2 (CPU) in the current set */
   p2Games: number;
+  /** Sets won by Player 1 */
   p1Sets: number;
+  /** Sets won by Player 2 (CPU) */
   p2Sets: number;
+  /** Aces scored by Player 1 */
   p1Aces: number;
+  /** Aces scored by CPU */
   p2Aces: number;
+  /** Player currently serving ('p1' or 'cpu') */
   server: 'p1' | 'cpu';
+  /** Court side for current serve: 'deuce' (right) or 'ad' (left) */
   serveSide: 'deuce' | 'ad';
+  /** Number of consecutive serve faults for active point (0 = 1st serve, 1 = 2nd serve) */
   faultCount: number;
+  /** Number of shot exchanges in current rally */
   rallyCount: number;
+  /** Current state in the tennis match state machine */
   matchStatus: 'idle' | 'serve_prep' | 'serving' | 'playing' | 'point_over' | 'game_over';
+  /** Player who made the last racket contact ('p1' | 'cpu' | null) */
   lastHitter: 'p1' | 'cpu' | null;
+  /** Text of the latest umpire announcement / call */
   lastCall: string | null;
+  /** Hex color for the umpire announcement banner */
   lastCallColor: string;
+  /** Position [X, Y, Z] of Player 1 in world space */
   p1Pos: [number, number, number];
+  /** Position [X, Y, Z] of CPU Opponent in world space */
   cpuPos: [number, number, number];
+  /** Position [X, Y, Z] of tennis ball in world space */
   ballPos: [number, number, number];
+  /** Velocity vector [Vx, Vy, Vz] of tennis ball */
   ballVel: [number, number, number];
+  /** Monotonic counter to trigger CPU swing animation */
   cpuSwingTrigger: number;
+  /** Monotonic counter to trigger Player 1 swing animation */
   p1SwingTrigger: number;
+  /** Stroke type for Player 1 */
   p1ShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+  /** Stroke type for CPU */
   cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+  /** Timestamp when ball was tossed in air for serve */
   serveTossTime: number;
+  /** Speed of latest shot in km/h */
   lastSpeedKmh: number;
+  /** Speed of latest shot in mph */
   lastSpeedMph: number;
+  /** Display label for shot speed (e.g. 'SAQUE P1', 'DRIVE') */
   lastSpeedLabel: string;
+  /** Player who hit the measured shot */
   lastSpeedHitter: 'p1' | 'cpu' | null;
+  /** Fastest serve speed achieved by Player 1 in km/h */
   maxServeSpeedP1: number;
+  /** Fastest serve speed achieved by CPU in km/h */
   maxServeSpeedCpu: number;
+  /** Coordinates [X, Z] of the last ground bounce */
   lastBouncePos: [number, number] | null;
+  /** Whether the last bounce was inside legal court boundaries */
   lastBounceInBounds: boolean | null;
+  /** Distance in centimeters from bounce mark to nearest line */
   lastBounceDistanceCm: number | null;
+  /** High-resolution timestamp of last bounce */
   lastBounceTime: number;
 }
 
 interface TennisStore extends ScoreState {
+  /** Updates the current match status FSM */
   setMatchStatus: (status: ScoreState['matchStatus']) => void;
+  /** Sets the timestamp of the serve ball toss */
   setServeTossTime: (time: number) => void;
+  /** Increments current rally exchange counter */
   incrementRally: () => void;
+  /** Resets rally counter for a new point */
   resetPoint: () => void;
+  /** Awards a point to the specified player and calculates game/set/match progression */
   awardPoint: (winner: 'p1' | 'cpu', isAce?: boolean) => void;
+  /** Records a serve fault (1st fault or double fault) */
   recordFault: (wasNetFault?: boolean) => void;
+  /** Records an ITF Rule 22 Let (serve clipped net tape and landed in service box) */
   recordLet: () => void;
+  /** Updates Player 1 world coordinates */
   setP1Pos: (pos: [number, number, number]) => void;
+  /** Updates CPU world coordinates */
   setCpuPos: (pos: [number, number, number]) => void;
+  /** Sets the player who last struck the ball */
   setLastHitter: (hitter: 'p1' | 'cpu' | null) => void;
+  /** Displays a custom umpire call banner with optional color */
   setLastCall: (call: string | null, color?: string) => void;
+  /** Triggers CPU racket swing animation */
   triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
+  /** Triggers Player 1 racket swing animation */
   triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
+  /** Prepares players and ball for the next serve */
   resetServe: () => void;
+  /** Logs shot radar speed telemetry */
   recordShotSpeed: (speedKmh: number, label: string, hitter: 'p1' | 'cpu', isServe?: boolean) => void;
+  /** Logs Hawk-Eye bounce coordinates and distance to line */
   recordBounceLocation: (x: number, z: number, inBounds: boolean, distanceCm: number, timestamp: number) => void;
 }
 

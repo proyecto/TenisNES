@@ -1,3 +1,12 @@
+/**
+ * @file TennisScene.tsx
+ * @description Three.js / React Three Fiber scene composition container:
+ * - High-angle telephoto broadcast camera fixed perspective.
+ * - Directional sun light, shadow maps, ambient occlusion, sky shader, and park environment preset.
+ * - Physics world with Rapier 3D simulation step.
+ * - Scene graph composition: Court3D, TennisBall3D, Player3D (P1 and CPU), and StadiumAtmosphere3D.
+ */
+
 import React from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Sky, Environment } from '@react-three/drei';
@@ -8,7 +17,7 @@ import { Player3D } from './Player3D';
 import { StadiumAtmosphere3D } from './StadiumAtmosphere3D';
 
 /**
- * 3D Tennis Scene with FIXED broadcast TV perspective matching the reference image:
+ * 3D Tennis Scene with FIXED broadcast TV perspective:
  * - High-angle telephoto broadcast camera from behind near baseline
  * - Camera is completely static (no orbit drag/zoom)
  * - 1 Human Player vs CPU Opponent

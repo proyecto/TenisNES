@@ -1,3 +1,12 @@
+/**
+ * @file App.tsx
+ * @description Root application component combining:
+ * - 3D Tennis Simulation Canvas.
+ * - Broadcast TV HUD: Grand Slam graphics, match clock, scorebug, radar shot speeds.
+ * - Hawk-Eye Virtual Replay HUD for close boundary line calls.
+ * - Keyboard / Controller on-screen legend.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { TennisScene } from './components/TennisScene';
 import { useTennisStore } from './store/useTennisStore';
@@ -80,18 +89,22 @@ export const App: React.FC = () => {
   // Detect Deuce
   const isDeuce = p1Points === 3 && p2Points === 3;
 
-  // Hawk-Eye recent close call check (under 18cm from line within last 2.4s)
-  const [nowTime, setNowTime] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setNowTime(performance.now() / 1000), 200);
-    return () => clearInterval(t);
-  }, []);
-
+  // Hawk-Eye display for close boundary calls (under 18cm from line for 2.5s)
+  const [dismissedBounceTime, setDismissedBounceTime] = useState(0);
   const isRecentCloseCall =
     lastBounceDistanceCm !== null &&
     lastBounceDistanceCm <= 18 &&
     lastBounceTime > 0 &&
-    nowTime - lastBounceTime < 2.5;
+    lastBounceTime !== dismissedBounceTime;
+
+  useEffect(() => {
+    if (lastBounceDistanceCm !== null && lastBounceDistanceCm <= 18 && lastBounceTime > 0) {
+      const timer = setTimeout(() => {
+        setDismissedBounceTime(lastBounceTime);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastBounceTime, lastBounceDistanceCm]);
 
   const getStatusMessage = () => {
     const isP1Serving = server === 'p1';

@@ -1,23 +1,39 @@
+/**
+ * @file Court3D.tsx
+ * @description 3D Model of the Wimbledon Centre Court grass lawn, regulation ITF white boundary lines,
+ * physical Rapier ground collider, posts, net mesh, net tape, and dynamic service box indicators.
+ *
+ * ## Regulation Tennis Court Dimensions (Meters):
+ * - Total length: 23.77m (±11.885m / ±11.89m from center net)
+ * - Singles width: 8.23m (±4.115m from center line)
+ * - Doubles width: 10.97m (±5.485m from center line)
+ * - Service lines: 6.40m from net (±6.40m)
+ * - Net height: 0.914m at center, 1.07m at posts
+ */
+
 import React from 'react';
 import { RigidBody } from '@react-three/rapier';
 import { useTennisStore } from '../store/useTennisStore';
 
+/** Number of alternating grass stripes */
+const STRIPES_COUNT = 24;
+/** Width of each lawnmower stripe in meters */
+const STRIPE_WIDTH = 1.6;
+
+/** Precomputed lawnmower stripe positions to avoid GC allocations during render */
+const LAWN_STRIPES = Array.from({ length: STRIPES_COUNT }, (_, i) => ({
+  id: i,
+  xPos: (i - STRIPES_COUNT / 2 + 0.5) * STRIPE_WIDTH,
+  isLight: i % 2 === 0,
+}));
+
 /**
- * Standard regulation tennis court dimensions (in meters):
- * Total length = 23.77m (±11.885m from center net)
- * Singles width = 8.23m (±4.115m from center)
- * Doubles width = 10.97m (±5.485m from center)
- * Service line = 6.40m from net (±6.40m)
- * Net height = 0.914m in center, 1.07m at posts
+ * Renders the 3D grass court with Rapier physics colliders and visual lines.
  */
 export const Court3D: React.FC = () => {
   const matchStatus = useTennisStore((state) => state.matchStatus);
   const server = useTennisStore((state) => state.server);
   const serveSide = useTennisStore((state) => state.serveSide);
-
-  // Generate alternating lawn mower stripes
-  const stripesCount = 24;
-  const stripeWidth = 1.6;
 
   const isServingMode = matchStatus === 'serve_prep' || matchStatus === 'serving';
 
@@ -47,19 +63,20 @@ export const Court3D: React.FC = () => {
 
       {/* Alternating Wimbledon Lawnmower Stripes across the grass */}
       <group position={[0, 0.005, 0]}>
-        {Array.from({ length: stripesCount }).map((_, i) => {
-          const xPos = (i - stripesCount / 2 + 0.5) * stripeWidth;
-          const isLight = i % 2 === 0;
-          return (
-            <mesh key={i} position={[xPos, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-              <planeGeometry args={[stripeWidth, 52]} />
-              <meshStandardMaterial
-                color={isLight ? '#7ec800' : '#6eb500'}
-                roughness={0.75}
-              />
-            </mesh>
-          );
-        })}
+        {LAWN_STRIPES.map((stripe) => (
+          <mesh
+            key={stripe.id}
+            position={[stripe.xPos, 0, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+          >
+            <planeGeometry args={[STRIPE_WIDTH, 52]} />
+            <meshStandardMaterial
+              color={stripe.isLight ? '#7ec800' : '#6eb500'}
+              roughness={0.75}
+            />
+          </mesh>
+        ))}
       </group>
 
       {/* 2. Court Regulation White Lines (Painted directly on lawn) */}

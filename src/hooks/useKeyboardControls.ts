@@ -1,14 +1,35 @@
+/**
+ * @file useKeyboardControls.ts
+ * @description Input mapping hook for keyboard and pointer events in the tennis simulation.
+ * Maps WASD / Arrow keys to directional movement, and Space / Shift / Mouse clicks to shot actions.
+ */
+
 import { useEffect, useRef } from 'react';
 
+/**
+ * Snapshot of current input states.
+ */
 export interface KeyboardState {
+  /** Move forward (upwards along court toward net): W or Arrow Up */
   forward: boolean;
+  /** Move backward (downwards along court toward baseline): S or Arrow Down */
   backward: boolean;
+  /** Move left: A or Arrow Left */
   left: boolean;
+  /** Move right: D or Arrow Right */
   right: boolean;
-  action: boolean; // Space / Left-click swing
-  lob: boolean; // Shift / E / X / Right-click lob
+  /** Primary action / strike / serve toss: Spacebar or Left Mouse Button */
+  action: boolean;
+  /** High defensive lob stroke: Shift, E, X, or Right Mouse Button */
+  lob: boolean;
 }
 
+/**
+ * React hook that captures and tracks user input state without triggering re-renders,
+ * providing a high-performance ref for 60 FPS animation loops.
+ *
+ * @returns Mutable ref containing current keyboard and pointer flags.
+ */
 export const useKeyboardControls = () => {
   const keys = useRef<KeyboardState>({
     forward: false,
