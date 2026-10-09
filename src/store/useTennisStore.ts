@@ -24,8 +24,8 @@ export interface ScoreState {
   ballVel: [number, number, number];
   cpuSwingTrigger: number;
   p1SwingTrigger: number;
-  p1ShotType: 'drive' | 'backhand' | 'smash';
-  cpuShotType: 'drive' | 'backhand' | 'smash';
+  p1ShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+  cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob';
   serveTossTime: number;
   lastSpeedKmh: number;
   lastSpeedMph: number;
@@ -45,14 +45,14 @@ interface TennisStore extends ScoreState {
   incrementRally: () => void;
   resetPoint: () => void;
   awardPoint: (winner: 'p1' | 'cpu', isAce?: boolean) => void;
-  recordFault: () => void;
+  recordFault: (wasNetFault?: boolean) => void;
   recordLet: () => void;
   setP1Pos: (pos: [number, number, number]) => void;
   setCpuPos: (pos: [number, number, number]) => void;
   setLastHitter: (hitter: 'p1' | 'cpu' | null) => void;
   setLastCall: (call: string | null, color?: string) => void;
-  triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash') => void;
-  triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash') => void;
+  triggerCpuSwing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
+  triggerP1Swing: (shotType?: 'drive' | 'backhand' | 'smash' | 'lob') => void;
   resetServe: () => void;
   recordShotSpeed: (speedKmh: number, label: string, hitter: 'p1' | 'cpu', isServe?: boolean) => void;
   recordBounceLocation: (x: number, z: number, inBounds: boolean, distanceCm: number, timestamp: number) => void;
@@ -184,12 +184,12 @@ export const useTennisStore = create<TennisStore>((set) => ({
       };
     }),
 
-  recordFault: () =>
+  recordFault: (wasNetFault = false) =>
     set((state) => {
       if (state.faultCount === 0) {
         return {
           faultCount: 1,
-          lastCall: '¡FALTA! SEGUNDO SERVICIO',
+          lastCall: wasNetFault ? '¡RED Y FUERA! FALTA (2º SERVICIO)' : '¡FALTA! SEGUNDO SERVICIO',
           lastCallColor: '#f59e0b',
           matchStatus: 'point_over',
           rallyCount: 0,
@@ -220,6 +220,8 @@ export const useTennisStore = create<TennisStore>((set) => ({
           ? (nextServeSide === 'deuce' ? -1.8 : 1.8)
           : (nextServeSide === 'deuce' ? -2.2 : 2.2);
 
+        const faultPrefix = wasNetFault ? '¡RED Y FUERA! ' : '';
+
         return {
           faultCount: 0,
           rallyCount: 0,
@@ -232,7 +234,7 @@ export const useTennisStore = create<TennisStore>((set) => ({
           p2Sets: next.p2Sets,
           server: nextServer,
           serveSide: nextServeSide,
-          lastCall: '¡DOBLE FALTA! ' + next.announcement,
+          lastCall: `${faultPrefix}¡DOBLE FALTA! ${next.announcement}`,
           lastCallColor: '#ef4444',
           p1Pos: [p1X, state.p1Pos[1], 12.35],
           cpuPos: [cpuX, state.cpuPos[1], -12.35],
@@ -241,12 +243,15 @@ export const useTennisStore = create<TennisStore>((set) => ({
     }),
 
   recordLet: () =>
-    set({
-      lastCall: '¡LET! SE REPITE EL SERVICIO',
+    set((state) => ({
+      lastCall:
+        state.faultCount === 1
+          ? '¡NET! SE REPITE EL 2º SERVICIO'
+          : '¡NET! SE REPITE EL 1º SERVICIO',
       lastCallColor: '#38bdf8',
       matchStatus: 'point_over',
       rallyCount: 0,
-    }),
+    })),
 
   setP1Pos: (pos) => set({ p1Pos: pos }),
   setCpuPos: (pos) => set({ cpuPos: pos }),

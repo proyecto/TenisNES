@@ -70,7 +70,7 @@ export const Player3D: React.FC<Player3DProps> = ({
   const stepProgress = useRef(0);
 
   // Stroke & service animation state
-  const currentShotType = useRef<'drive' | 'backhand' | 'smash'>('drive');
+  const currentShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob'>('drive');
   const swingProgress = useRef(0);
   const isSwinging = useRef(false);
   const lastCpuSwingTrigger = useRef(0);
@@ -177,11 +177,19 @@ export const Player3D: React.FC<Player3DProps> = ({
         currentShotType.current = useTennisStore.getState().p1ShotType;
         isSwinging.current = true;
         swingProgress.current = 1.0;
-      } else if (keys.current.action && !isSwinging.current && matchStatus !== 'serve_prep') {
+      } else if ((keys.current.action || keys.current.lob) && !isSwinging.current && matchStatus !== 'serve_prep') {
         const ball = useTennisStore.getState().ballPos;
-        // Strictly right-hand side (dx >= 0) is drive; strictly left-hand side (dx < 0) is backhand
         const isRight = ball[0] >= currentPos.current.x;
-        currentShotType.current = matchStatus === 'serving' ? 'smash' : isRight ? 'drive' : 'backhand';
+        const isOverhead = ball[1] >= 1.65;
+        const isLobInput = keys.current.lob || (keys.current.backward && keys.current.action);
+
+        if (isLobInput) {
+          currentShotType.current = 'lob';
+        } else if (matchStatus === 'serving' || isOverhead) {
+          currentShotType.current = 'smash';
+        } else {
+          currentShotType.current = isRight ? 'drive' : 'backhand';
+        }
         isSwinging.current = true;
         swingProgress.current = 1.0;
       }
@@ -409,7 +417,13 @@ export const Player3D: React.FC<Player3DProps> = ({
     // =========================================================================
     if (isSwinging.current) {
       const swingSpeed =
-        currentShotType.current === 'backhand' ? 2.2 : currentShotType.current === 'smash' ? 2.8 : 3.4;
+        currentShotType.current === 'backhand'
+          ? 2.2
+          : currentShotType.current === 'smash'
+          ? 2.8
+          : currentShotType.current === 'lob'
+          ? 2.6
+          : 3.4;
       swingProgress.current -= delta * swingSpeed;
       if (swingProgress.current <= 0) {
         swingProgress.current = 0;
@@ -426,8 +440,95 @@ export const Player3D: React.FC<Player3DProps> = ({
         const strokePhase = 1 - swingProgress.current; // 0.0 -> 1.0
         const isBackhand = currentShotType.current === 'backhand';
         const isSmash = currentShotType.current === 'smash';
+        const isLob = currentShotType.current === 'lob';
 
-        if (isSmash) {
+        if (isLob) {
+          // ===================================================================
+          // GLOBO: MOVIMIENTO DE CUCHARA DE ABAJO A ARRIBA (UNDERHAND LIFT)
+          // La raqueta desciende abierta hasta la rodilla y barre hacia el cielo
+          // ===================================================================
+          if (strokePhase < 0.35) {
+            // Fase 1: Carga baja (preparación de cuchara por debajo de la bola)
+            const p = strokePhase / 0.35;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.12, 0.28, p),
+              MathUtils.lerp(0, -0.45, p) * (isOpponent ? -1 : 1),
+              0
+            );
+
+            // Brazo derecho baja hacia la rodilla derecha
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.25, -0.42, p),
+              MathUtils.lerp(0.38, 0.12, p),
+              MathUtils.lerp(0, -0.22, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.55, -0.15, p),
+              MathUtils.lerp(-0.28, -1.25, p),
+              MathUtils.lerp(0.22, 1.45, p)
+            );
+            // Raqueta abierta mirando al cielo
+            racketGroupRef.current.rotation.set(-0.35, -0.95, 1.15);
+
+            leftArmRef.current.position.set(0.28, 0.32, 0.1);
+            leftArmRef.current.rotation.set(-0.45, 0.45, -0.35);
+          } else if (strokePhase < 0.70) {
+            // Fase 2: Elevación enérgica hacia arriba (cuchareo al cielo)
+            const p = (strokePhase - 0.35) / 0.35;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(0.28, -0.18, p),
+              MathUtils.lerp(-0.45, 0.35, p) * (isOpponent ? -1 : 1),
+              0
+            );
+
+            // Brazo derecho sube desde la rodilla hasta por encima del hombro
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.42, -0.30, p),
+              MathUtils.lerp(0.12, 0.52, p),
+              MathUtils.lerp(-0.22, 0.30, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-0.15, -2.10, p),
+              MathUtils.lerp(-1.25, 0.15, p),
+              MathUtils.lerp(1.45, 0.35, p)
+            );
+            racketGroupRef.current.rotation.set(
+              MathUtils.lerp(-0.35, 0.65, p),
+              0.1,
+              0.2
+            );
+
+            leftArmRef.current.position.set(0.32, 0.36, -0.1);
+            leftArmRef.current.rotation.set(-0.65, 0.2, -0.25);
+          } else {
+            // Fase 3: Terminación alta apuntando al cielo y recuperación
+            const p = (strokePhase - 0.70) / 0.30;
+            torsoGroupRef.current.rotation.set(
+              MathUtils.lerp(-0.18, 0.12, p),
+              MathUtils.lerp(0.35, 0, p) * (isOpponent ? -1 : 1),
+              0
+            );
+
+            rightArmRef.current.position.set(
+              MathUtils.lerp(-0.30, -0.25, p),
+              MathUtils.lerp(0.52, 0.38, p),
+              MathUtils.lerp(0.30, 0, p)
+            );
+            rightArmRef.current.rotation.set(
+              MathUtils.lerp(-2.10, -0.55, p),
+              MathUtils.lerp(0.15, -0.28, p),
+              MathUtils.lerp(0.35, 0.22, p)
+            );
+            racketGroupRef.current.rotation.set(
+              MathUtils.lerp(0.65, 0.55, p),
+              -0.1,
+              0.25
+            );
+
+            leftArmRef.current.position.set(0.25, 0.38, 0);
+            leftArmRef.current.rotation.set(-0.68, 0.28, -0.28);
+          }
+        } else if (isSmash) {
           // ===================================================================
           // 1. SMASH / SAQUE: A UNA MANO, POR ENCIMA DE LA CABEZA (OVERHEAD VERTICAL)
           // "Como si fuera un drive, pero en lugar de a la derecha, hacia arriba."

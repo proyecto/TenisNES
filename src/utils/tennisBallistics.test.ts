@@ -99,4 +99,48 @@ describe('tennisBallistics', () => {
     expect(leftHit.canHit).toBe(true);
     expect(leftHit.shotType).toBe('backhand');
   });
+
+  it('detects high overhead ball for smash in evaluateHitReach', () => {
+    const playerPos: [number, number, number] = [0, 0, 10.0];
+
+    // High ball at y = 1.95m directly above / in front
+    const highBall = evaluateHitReach(playerPos, [0.4, 1.95, 9.6], false);
+    expect(highBall.canHit).toBe(true);
+    expect(highBall.isOverhead).toBe(true);
+    expect(highBall.shotType).toBe('smash');
+  });
+
+  it('calculates high-arching lob trajectory flying over the net and deep into baseline', () => {
+    const lobShot = calculateShotVelocity({
+      fromPos: [0, 1.0, 10.0],
+      targetZ: -10.0,
+      shotType: 'lob',
+    });
+
+    expect(lobShot.z).toBeLessThan(0); // Towards opponent
+    expect(lobShot.y).toBeGreaterThan(6.0); // High vertical launch
+
+    // Height at net (Z = 0) must easily clear someone waiting at the net (height > 3.5m)
+    const timeToNet = 10.0 / Math.abs(lobShot.z);
+    const heightAtNet = 1.0 + lobShot.y * timeToNet - 0.5 * 9.81 * timeToNet * timeToNet;
+    expect(heightAtNet).toBeGreaterThan(3.5);
+  });
+
+  it('calculates explosive rally smash velocity clearing the net', () => {
+    const smashShot = calculateShotVelocity({
+      fromPos: [0, 2.1, 8.0],
+      targetZ: -8.0,
+      shotType: 'smash',
+      isServe: false,
+    });
+
+    // Fast downward plunge: speedZ should be ~28.5 m/s
+    expect(Math.abs(smashShot.z)).toBeGreaterThan(25.0);
+
+    // Ball clears net
+    const timeToNet = 8.0 / Math.abs(smashShot.z);
+    const heightAtNet = 2.1 + smashShot.y * timeToNet - 0.5 * 9.81 * timeToNet * timeToNet;
+    expect(heightAtNet).toBeGreaterThanOrEqual(1.10);
+  });
 });
+

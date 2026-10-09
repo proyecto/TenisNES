@@ -5,7 +5,8 @@ export interface KeyboardState {
   backward: boolean;
   left: boolean;
   right: boolean;
-  action: boolean; // Space / Swing
+  action: boolean; // Space / Left-click swing
+  lob: boolean; // Shift / E / X / Right-click lob
 }
 
 export const useKeyboardControls = () => {
@@ -15,6 +16,7 @@ export const useKeyboardControls = () => {
     left: false,
     right: false,
     action: false,
+    lob: false,
   });
 
   useEffect(() => {
@@ -42,6 +44,17 @@ export const useKeyboardControls = () => {
       if (code === 'Space' || key === ' ' || key === 'spacebar') {
         keys.current.action = true;
       }
+      if (
+        code === 'ShiftLeft' ||
+        code === 'ShiftRight' ||
+        code === 'KeyE' ||
+        code === 'KeyX' ||
+        key === 'shift' ||
+        key === 'e' ||
+        key === 'x'
+      ) {
+        keys.current.lob = true;
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -63,6 +76,17 @@ export const useKeyboardControls = () => {
       if (code === 'Space' || key === ' ' || key === 'spacebar') {
         keys.current.action = false;
       }
+      if (
+        code === 'ShiftLeft' ||
+        code === 'ShiftRight' ||
+        code === 'KeyE' ||
+        code === 'KeyX' ||
+        key === 'shift' ||
+        key === 'e' ||
+        key === 'x'
+      ) {
+        keys.current.lob = false;
+      }
     };
 
     const handleBlur = () => {
@@ -71,19 +95,27 @@ export const useKeyboardControls = () => {
       keys.current.left = false;
       keys.current.right = false;
       keys.current.action = false;
+      keys.current.lob = false;
     };
 
     const handlePointerDown = (e: MouseEvent) => {
-      // Left mouse click triggers action (swing / toss)
       if (e.button === 0) {
         keys.current.action = true;
+      } else if (e.button === 2) {
+        keys.current.lob = true;
       }
     };
 
     const handlePointerUp = (e: MouseEvent) => {
       if (e.button === 0) {
         keys.current.action = false;
+      } else if (e.button === 2) {
+        keys.current.lob = false;
       }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -91,6 +123,7 @@ export const useKeyboardControls = () => {
     window.addEventListener('blur', handleBlur);
     window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -98,6 +131,7 @@ export const useKeyboardControls = () => {
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []);
 

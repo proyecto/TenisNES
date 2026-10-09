@@ -64,11 +64,39 @@ describe('useTennisStore', () => {
   });
 
   it('records let without penalizing the server with a fault', () => {
+    // 1st serve NET / LET
     useTennisStore.setState({ faultCount: 0 });
     useTennisStore.getState().recordLet();
-    const state = useTennisStore.getState();
-    expect(state.lastCall).toContain('LET');
+    let state = useTennisStore.getState();
+    expect(state.lastCall).toContain('NET');
+    expect(state.lastCall).toContain('1º SERVICIO');
     expect(state.faultCount).toBe(0);
+
+    // 2nd serve NET / LET: repeats 2nd serve without losing point
+    useTennisStore.setState({ faultCount: 1 });
+    useTennisStore.getState().recordLet();
+    state = useTennisStore.getState();
+    expect(state.lastCall).toContain('NET');
+    expect(state.lastCall).toContain('2º SERVICIO');
+    expect(state.faultCount).toBe(1);
+  });
+
+  it('records net fault (ball touches net and lands out) correctly', () => {
+    // 1st serve touches net and lands out -> advances to 2nd serve
+    useTennisStore.setState({ faultCount: 0 });
+    useTennisStore.getState().recordFault(true);
+    let state = useTennisStore.getState();
+    expect(state.faultCount).toBe(1);
+    expect(state.lastCall).toContain('RED Y FUERA');
+    expect(state.lastCall).toContain('2º SERVICIO');
+
+    // 2nd serve touches net and lands out -> double fault, receiver wins point
+    useTennisStore.getState().recordFault(true);
+    state = useTennisStore.getState();
+    expect(state.faultCount).toBe(0);
+    expect(state.p2Points).toBe(1);
+    expect(state.lastCall).toContain('RED Y FUERA');
+    expect(state.lastCall).toContain('DOBLE FALTA');
   });
 
   it('awards point and increments aces counter when an Ace occurs', () => {

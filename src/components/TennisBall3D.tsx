@@ -27,6 +27,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
 
   // Track previous space key state to detect single keydown presses
   const prevActionPressed = useRef(false);
+  const prevLobPressed = useRef(false);
+  const lastShotType = useRef<'drive' | 'backhand' | 'smash' | 'lob'>('drive');
   const lastHitTime = useRef(0);
   const serveTossTime = useRef(0);
   const servePrepEnteredTime = useRef(0);
@@ -39,6 +41,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
   const serveLandedInBox = useRef(false);
   const shotLegalBounceOccurred = useRef(false);
   const collisionTriggeredBounce = useRef(false);
+  const lastNetDeflectionTime = useRef(0);
   const pointOverEnteredTime = useRef(0);
   const p1SwingAttemptTime = useRef(0);
 
@@ -60,6 +63,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       serveLandedInBox.current = false;
       shotLegalBounceOccurred.current = false;
       collisionTriggeredBounce.current = false;
+      lastNetDeflectionTime.current = 0;
       hasLaunchedToss.current = false;
       pointOverEnteredTime.current = 0;
       p1SwingAttemptTime.current = 0;
@@ -74,6 +78,8 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     const t = state.clock.getElapsedTime();
     const isActionJustPressed = keys.current.action && !prevActionPressed.current;
     prevActionPressed.current = keys.current.action;
+    const isLobJustPressed = keys.current.lob && !prevLobPressed.current;
+    prevLobPressed.current = keys.current.lob;
 
     const ballPos = ballBodyRef.current.translation();
     const ballVel = ballBodyRef.current.linvel();
@@ -91,18 +97,27 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     const isCrossingNetPlane = Math.abs(ballPos.z) <= 0.28;
     const isBelowNetTape = ballPos.y <= netHeightAtX + 0.04;
 
-    if (isCrossingNetPlane && isBelowNetTape && !pointResolved.current) {
+    if (
+      isCrossingNetPlane &&
+      isBelowNetTape &&
+      !pointResolved.current &&
+      t - lastNetDeflectionTime.current > 0.35
+    ) {
       const currentV = ballBodyRef.current.linvel();
       const isMovingTowardsNet =
         (ballPos.z > 0 && currentV.z < 0) || (ballPos.z < 0 && currentV.z > 0);
 
       if (isMovingTowardsNet) {
-        // A. Net Tape Cord Graze (top 8cm of the tape): Lucky deflection / let
-        if (ballPos.y >= netHeightAtX - 0.06) {
+        lastNetDeflectionTime.current = t;
+        if (isServeShot.current) {
           serveTouchedNet.current = true;
-          // Retain slight forward momentum, tumble over the tape
+        }
+
+        // A. Net Tape Cord Graze (top 9cm of the tape): Lucky deflection / let
+        if (ballPos.y >= netHeightAtX - 0.08) {
+          // Retain strong forward momentum, pop over the tape into opponent court
           ballBodyRef.current.setLinvel(
-            { x: currentV.x * 0.65, y: Math.max(1.2, Math.abs(currentV.y) * 0.4), z: currentV.z * 0.42 },
+            { x: currentV.x * 0.70, y: Math.max(1.3, Math.abs(currentV.y) * 0.5 + 0.8), z: currentV.z * 0.65 },
             true
           );
           ballBodyRef.current.setAngvel({ x: (currentV.z < 0 ? -1 : 1) * 20, y: 0, z: 0 }, true);
@@ -111,7 +126,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           // B. Solid Impact into Net Mesh (below tape): Rebounds and drops on hitter's side
           const reboundDir = ballPos.z > 0 ? 1 : -1;
           ballBodyRef.current.setLinvel(
-            { x: currentV.x * 0.15, y: -0.6, z: reboundDir * 1.8 },
+            { x: currentV.x * 0.15, y: -0.5, z: reboundDir * 1.5 },
             true
           );
           ballBodyRef.current.setAngvel({ x: reboundDir * 12, y: 0, z: 0 }, true);
@@ -268,6 +283,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             true
           );
 
+          lastShotType.current = 'smash';
           useTennisStore.getState().triggerP1Swing('smash');
           setLastHitter('p1');
           setMatchStatus('playing');
@@ -316,6 +332,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             true
           );
 
+          lastShotType.current = 'smash';
           useTennisStore.getState().triggerCpuSwing('smash');
           setLastHitter('cpu');
           setMatchStatus('playing');
@@ -338,22 +355,29 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
     }
 
     // =========================================================================
-    // 3. IN-PLAY RALLY: Player 1 Hits Ball (Drive vs Revés)
+    // 3. IN-PLAY RALLY: Player 1 Hits Ball (Drive, Revés, Smash, Globo)
     // =========================================================================
     if (matchStatus === 'playing') {
       const reach = evaluateHitReach(p1, [ballPos.x, ballPos.y, ballPos.z], false);
-      const shotType = reach.shotType; // 'drive' (derecha) o 'backhand' (revés)
+      const wantsLob = keys.current.lob || (keys.current.backward && (isActionJustPressed || keys.current.action));
+      const isOverhead = reach.isOverhead || ballPos.y >= 1.65;
 
-      // When player presses SPACE, execute swing animation immediately
-      if (isActionJustPressed) {
+      const currentIntentShotType: 'drive' | 'backhand' | 'smash' | 'lob' = wantsLob
+        ? 'lob'
+        : isOverhead
+        ? 'smash'
+        : reach.shotType;
+
+      // When player presses SPACE or LOB key, execute swing animation immediately
+      if (isActionJustPressed || isLobJustPressed) {
         p1SwingAttemptTime.current = t;
-        useTennisStore.getState().triggerP1Swing(shotType);
+        useTennisStore.getState().triggerP1Swing(currentIntentShotType);
       }
 
       // ITF Rule 17: Returner must let serve bounce in service box before hitting!
       const isReturnerVolleyingServe = isServeShot.current && bouncesSinceHit.current === 0;
 
-      // Ball is struck ONLY if the player actively pressed Space within swing window (0.35s)
+      // Ball is struck ONLY if the player actively pressed Space or Lob within swing window (0.35s)
       const isSwingActive = t - p1SwingAttemptTime.current <= 0.35;
       const shouldHit =
         !isReturnerVolleyingServe &&
@@ -362,8 +386,11 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         t - lastHitTime.current > 0.38;
 
       if (shouldHit) {
-        // Consume the swing attempt so each Space press strikes once
+        // Consume the swing attempt so each press strikes once
         p1SwingAttemptTime.current = 0;
+
+        const shotType = currentIntentShotType;
+        lastShotType.current = shotType;
 
         const steeringX = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
         const steeringZ = (keys.current.forward ? 1 : 0) - (keys.current.backward ? 1 : 0);
@@ -378,7 +405,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         });
 
         ballBodyRef.current.setLinvel(shot, true);
-        const baseSpin = shotType === 'drive' ? 12 : 7;
+        const baseSpin = shotType === 'smash' ? 18 : shotType === 'lob' ? -12 : shotType === 'drive' ? 12 : 7;
         const spinX = steeringZ > 0 ? baseSpin + 4 : steeringZ < 0 ? -4 : baseSpin;
         const spinY = steeringX * (shotType === 'drive' ? -5 : -2);
         ballBodyRef.current.setAngvel({ x: spinX, y: spinY, z: 0 }, true);
@@ -386,18 +413,26 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         // Record P1 rally shot speed for TV radar
         const p1SpeedMs = Math.hypot(shot.x, shot.y, shot.z);
         const p1SpeedKmh = Math.round(p1SpeedMs * 3.6);
-        const p1Label =
-          shotType === 'drive'
-            ? steeringZ > 0
+        let p1Label = 'GOLPE P1';
+        if (shotType === 'smash') {
+          p1Label = '¡REMATE SMASH!';
+        } else if (shotType === 'lob') {
+          p1Label = keys.current.forward ? 'GLOBO TÁCTICO' : 'GLOBO DEFENSIVO';
+        } else if (shotType === 'drive') {
+          p1Label =
+            steeringZ > 0
               ? 'DRIVE POTENTE 1-MANO'
               : steeringZ < 0
               ? 'DEJADA CORTA'
-              : 'DRIVE A 1 MANO'
-            : steeringZ > 0
-            ? 'REVÉS PLANO 2-MANOS'
-            : steeringZ < 0
-            ? 'DEJADA DE REVÉS'
-            : 'REVÉS A 2 MANOS';
+              : 'DRIVE A 1 MANO';
+        } else {
+          p1Label =
+            steeringZ > 0
+              ? 'REVÉS PLANO 2-MANOS'
+              : steeringZ < 0
+              ? 'DEJADA DE REVÉS'
+              : 'REVÉS A 2 MANOS';
+        }
         useTennisStore.getState().recordShotSpeed(p1SpeedKmh, p1Label, 'p1', false);
 
         setLastHitter('p1');
@@ -413,7 +448,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       }
 
       // =======================================================================
-      // 4. INTELLIGENT CPU OPPONENT RETURN (Drive vs Revés):
+      // 4. INTELLIGENT CPU OPPONENT RETURN (Drive, Revés, Smash, Globo Táctico):
       // =======================================================================
       const isCpuVolleyingServe = isServeShot.current && bouncesSinceHit.current === 0;
       const cpuReach = evaluateHitReach(cpuPos, [ballPos.x, ballPos.y, ballPos.z], true);
@@ -428,10 +463,23 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         cpuReach.canHit &&
         t - lastHitTime.current > 0.38
       ) {
-        const shotType = cpuReach.shotType;
         const p1X = useTennisStore.getState().p1Pos[0];
+        const p1Z = useTennisStore.getState().p1Pos[2];
+        const isP1AtNet = p1Z < 7.0; // Player 1 is rushing the net!
+
+        let cpuShotType: 'drive' | 'backhand' | 'smash' | 'lob';
+        if (cpuReach.isOverhead || ballPos.y >= 1.65) {
+          cpuShotType = 'smash';
+        } else if (isP1AtNet && Math.random() < 0.65) {
+          cpuShotType = 'lob'; // Tactical lob over rushing Player 1!
+        } else {
+          cpuShotType = cpuReach.shotType;
+        }
+
+        lastShotType.current = cpuShotType;
+
         const preferredSide = p1X < 0 ? 1 : -1;
-        const targetX = preferredSide * (shotType === 'drive' ? (2.0 + Math.random() * 2.2) : (1.4 + Math.random() * 1.4));
+        const targetX = preferredSide * (cpuShotType === 'drive' ? (2.0 + Math.random() * 2.2) : (1.4 + Math.random() * 1.4));
 
         // When CPU is at the net retrieving a short ball, it drives deep into Player 1's court!
         const isCpuNearNet = cpuPos[2] > -5.5;
@@ -443,19 +491,36 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           targetX,
           steeringX: 0,
           isServe: false,
-          shotType,
+          shotType: cpuShotType,
         });
 
         ballBodyRef.current.setLinvel(cpuShot, true);
-        ballBodyRef.current.setAngvel({ x: shotType === 'drive' ? -10 : -6, y: preferredSide * 3, z: 0 }, true);
+        const cpuSpinX =
+          cpuShotType === 'smash'
+            ? -18
+            : cpuShotType === 'lob'
+            ? 12
+            : cpuShotType === 'drive'
+            ? -10
+            : -6;
+        ballBodyRef.current.setAngvel({ x: cpuSpinX, y: preferredSide * 3, z: 0 }, true);
 
         // Record CPU rally shot speed for TV radar
         const cpuRallySpeedMs = Math.hypot(cpuShot.x, cpuShot.y, cpuShot.z);
         const cpuRallySpeedKmh = Math.round(cpuRallySpeedMs * 3.6);
-        const cpuLabel = shotType === 'drive' ? 'DRIVE CPU' : 'REVÉS A 2 MANOS CPU';
+        let cpuLabel = 'GOLPE CPU';
+        if (cpuShotType === 'smash') {
+          cpuLabel = '¡REMATE SMASH CPU!';
+        } else if (cpuShotType === 'lob') {
+          cpuLabel = 'GLOBO TÁCTICO CPU';
+        } else if (cpuShotType === 'drive') {
+          cpuLabel = 'DRIVE CPU';
+        } else {
+          cpuLabel = 'REVÉS A 2 MANOS CPU';
+        }
         useTennisStore.getState().recordShotSpeed(cpuRallySpeedKmh, cpuLabel, 'cpu', false);
 
-        useTennisStore.getState().triggerCpuSwing(shotType);
+        useTennisStore.getState().triggerCpuSwing(cpuShotType);
         setLastHitter('cpu');
         incrementRally();
         lastHitTime.current = t;
@@ -472,7 +537,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
       // 5. BOUNCE EVALUATION & TENNIS COURT BOUNDARIES (IN / OUT / FAULT / LET)
       // =======================================================================
       const isGroundContact =
-        (ballPos.y <= 0.22 && ballVel.y <= 0.6) || collisionTriggeredBounce.current;
+        (ballPos.y <= 0.22 && ballVel.y <= 0.6) || (collisionTriggeredBounce.current && ballPos.y <= 0.32);
       const isDebouncedBounce = t - lastBounceTime.current > 0.18;
 
       if (isGroundContact && isDebouncedBounce) {
@@ -487,22 +552,34 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           const horizSpeed = Math.hypot(ballVel.x, ballVel.z);
           const isDropShot = horizSpeed < 12.0;
           const isServe = isServeShot.current;
+          const isSmash = lastShotType.current === 'smash';
+          const isLob = lastShotType.current === 'lob';
 
           // Rebound vertical speed:
-          // - Normal Rally / Drive: vy = 5.15 m/s -> Apex h = 5.15^2 / (2 * 9.81) = 1.35m (Waist/Chest height!)
-          // - Fast Serve: vy = 5.40 m/s -> Apex h = 5.40^2 / (2 * 9.81) = 1.48m (High Chest kick!)
-          // - Drop Shot (dejada corta): vy = 3.85 m/s -> Apex h = 3.85^2 / (2 * 9.81) = 0.75m (Knee height, dies quickly)
-          const targetReboundVy = isServe ? 5.40 : isDropShot ? 3.85 : 5.15;
+          // - Smash: vy = 5.85 m/s -> Apex h = 1.74m (Explosive high kick!)
+          // - Lob: vy = 4.85 m/s -> Apex h = 1.20m (High arching bounce)
+          // - Fast Serve: vy = 5.40 m/s -> Apex h = 1.48m
+          // - Normal Rally / Drive: vy = 5.15 m/s -> Apex h = 1.35m
+          // - Drop Shot (dejada corta): vy = 3.85 m/s -> Apex h = 0.75m
+          const targetReboundVy = isSmash
+            ? 5.85
+            : isLob
+            ? 4.85
+            : isServe
+            ? 5.40
+            : isDropShot
+            ? 3.85
+            : 5.15;
 
           // Maintain horizontal forward trajectory with realistic turf traction (~78% speed retention)
-          const speedRetention = isDropShot ? 0.65 : 0.78;
+          const speedRetention = isSmash ? 0.84 : isLob ? 0.72 : isDropShot ? 0.65 : 0.78;
           const newVx = ballVel.x * speedRetention;
           const newVz = ballVel.z * speedRetention;
 
           ballBodyRef.current.setLinvel({ x: newVx, y: targetReboundVy, z: newVz }, true);
 
           // Add realistic forward topspin roll on the ball
-          const topspinKick = (ballVel.z < 0 ? -1 : 1) * (isServe ? 16 : 11);
+          const topspinKick = (ballVel.z < 0 ? -1 : 1) * (isSmash ? 22 : isServe ? 16 : 11);
           ballBodyRef.current.setAngvel({ x: topspinKick, y: 0, z: 0 }, true);
         }
 
@@ -516,7 +593,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         const minDist = Math.min(distSideline, distBaseline, distService, distCenter);
         const distanceCm = Math.round(minDist * 100 * 10) / 10;
 
-        // 5a. First Bounce Check (Line In / Out / Service Box / Let)
+        // 5a. First Bounce Check (Line In / Out / Service Box / Net / Let)
         if (bouncesSinceHit.current === 1 && !pointResolved.current && hitter) {
           const evaluation = evaluateBounce({
             x: ballPos.x,
@@ -535,22 +612,37 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             t
           );
 
-          // Check Service Let (ITF Rule 22: touches net and lands in legal box)
-          if (isServeShot.current && serveTouchedNet.current && evaluation.isInBounds && !evaluation.isFault) {
-            pointResolved.current = true;
-            recordLet();
-          } else if (evaluation.isFault) {
-            pointResolved.current = true;
-            recordFault();
-          } else if (!evaluation.isInBounds) {
-            pointResolved.current = true;
-            const winner = hitter === 'p1' ? 'cpu' : 'p1';
-            awardPoint(winner);
+          if (isServeShot.current) {
+            if (serveTouchedNet.current) {
+              if (evaluation.isInBounds && !evaluation.isFault) {
+                // ITF Rule 22: Touched net AND landed IN target service box -> ¡NET / LET!
+                // Server repeats the serve without advancing faultCount
+                pointResolved.current = true;
+                recordLet();
+              } else {
+                // Touched net BUT landed outside service box / server's side -> ¡FALTA!
+                pointResolved.current = true;
+                recordFault(true);
+              }
+            } else {
+              // Clean serve without touching net
+              if (evaluation.isFault || !evaluation.isInBounds) {
+                pointResolved.current = true;
+                recordFault(false);
+              } else {
+                // THE FIRST BOUNCE WAS 100% LEGAL AND IN-BOUNDS!
+                shotLegalBounceOccurred.current = true;
+                serveLandedInBox.current = true;
+              }
+            }
           } else {
-            // THE FIRST BOUNCE WAS 100% LEGAL AND IN-BOUNDS!
-            shotLegalBounceOccurred.current = true;
-            if (isServeShot.current) {
-              serveLandedInBox.current = true;
+            // Regular in-play rally shot
+            if (!evaluation.isInBounds) {
+              pointResolved.current = true;
+              const winner = hitter === 'p1' ? 'cpu' : 'p1';
+              awardPoint(winner);
+            } else {
+              shotLegalBounceOccurred.current = true;
             }
           }
         }
@@ -592,7 +684,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           if (isOutOfBoundsDirectly) {
             pointResolved.current = true;
             if (isServeShot.current) {
-              recordFault();
+              recordFault(serveTouchedNet.current);
             } else {
               const winner = currentHitter === 'p1' ? 'cpu' : 'p1';
               awardPoint(winner);
@@ -655,9 +747,17 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         friction={0.65}
         linearDamping={0.02}
         angularDamping={0.1}
-        onCollisionEnter={() => {
-          onBounce?.();
-          collisionTriggeredBounce.current = true;
+        onCollisionEnter={({ other }) => {
+          const otherName = other.rigidBodyObject?.name;
+          if (otherName === 'tennis_net') {
+            if (isServeShot.current) {
+              serveTouchedNet.current = true;
+            }
+            onBounce?.();
+          } else {
+            onBounce?.();
+            collisionTriggeredBounce.current = true;
+          }
         }}
       >
         <mesh ref={ballMeshRef} castShadow>

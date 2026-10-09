@@ -10,7 +10,7 @@ export interface HitParameters {
   steeringX?: number; // Player input steer: -1 (left), 0 (center), +1 (right)
   steeringZ?: number; // Depth steer: +1 (adelante / fuerte), -1 (atrás / floja y corta), 0 (neutral)
   isServe?: boolean;
-  shotType?: 'drive' | 'backhand' | 'smash';
+  shotType?: 'drive' | 'backhand' | 'smash' | 'lob';
 }
 
 export interface ShotVelocity {
@@ -24,9 +24,10 @@ const NET_Z = 0;
 
 export interface HitReachResult {
   canHit: boolean;
-  shotType: 'drive' | 'backhand';
+  shotType: 'drive' | 'backhand' | 'smash';
   dx: number;
   reachRatio: number;
+  isOverhead: boolean;
 }
 
 /**
@@ -46,23 +47,29 @@ export function evaluateHitReach(
   // For Player 1 (facing net at -Z): right side (derecha/drive) is strictly dx >= 0
   // For Opponent (facing P1 at +Z): right side (derecha/drive) is strictly dx <= 0
   const isRightHandSide = isOpponent ? dx <= 0 : dx >= 0;
-  const shotType: 'drive' | 'backhand' = isRightHandSide ? 'drive' : 'backhand';
+  const isOverhead = ballPos[1] >= 1.65;
+  const shotType: 'drive' | 'backhand' | 'smash' = isOverhead
+    ? 'smash'
+    : isRightHandSide
+      ? 'drive'
+      : 'backhand';
 
   // Asymmetric horizontal reach:
   // Drive (1 mano a la derecha): gran alcance (~1.95m)
   // Backhand (2 manos a la izquierda): alcance corto y compacto (~1.15m)
-  const maxReachX = isRightHandSide ? 1.95 : 1.15;
+  // Smash (overhead vertical): alcance aéreo (~1.80m)
+  const maxReachX = isOverhead ? 1.80 : isRightHandSide ? 1.95 : 1.15;
 
-  // Front-back reach along direction of play (reduced from 3.2m depth to 1.65m)
+  // Front-back reach along direction of play
   const forwardDz = isOpponent ? dz : -dz;
-  const inFront = forwardDz >= -0.40 && forwardDz <= 1.25;
+  const inFront = forwardDz >= -0.45 && forwardDz <= 1.30;
 
   const normX = Math.abs(dx) / maxReachX;
-  const normZ = forwardDz >= 0 ? forwardDz / 1.25 : Math.abs(forwardDz) / 0.40;
+  const normZ = forwardDz >= 0 ? forwardDz / 1.30 : Math.abs(forwardDz) / 0.45;
   const ellipseDist = Math.sqrt(normX * normX + normZ * normZ);
 
-  // Height envelope: ball must be within reachable height [0.15m, 2.10m]
-  const inHeight = ballPos[1] >= 0.15 && ballPos[1] <= 2.10;
+  // Height envelope: ball must be within reachable height [0.15m, 2.45m]
+  const inHeight = ballPos[1] >= 0.15 && ballPos[1] <= 2.45;
   const canHit = inFront && inHeight && ellipseDist <= 1.0;
 
   return {
@@ -70,6 +77,7 @@ export function evaluateHitReach(
     shotType,
     dx,
     reachRatio: ellipseDist,
+    isOverhead,
   };
 }
 
@@ -85,8 +93,8 @@ export function calculateShotVelocity({
   const [x0, y0, z0] = fromPos;
   const isMovingForward = targetZ < z0;
 
-  if (isServe || shotType === 'smash') {
-    // 1. Tennis serve / smash: analytic trajectory connecting (x0, y0, z0)
+  if (isServe) {
+    // 1. Tennis serve: analytic trajectory connecting (x0, y0, z0)
     // to (targetX, yLand = 0.08, targetZ)
     const dzTotal = targetZ - z0;
     const absDzTotal = Math.abs(dzTotal);
@@ -130,6 +138,55 @@ export function calculateShotVelocity({
 
     const vz = dzTotal / tLand;
     const vx = (targetX - x0) / tLand;
+
+    return { x: vx, y: vy, z: vz };
+  }
+
+  if (shotType === 'smash') {
+    // 2. Overhead Smash during rally: explosive downward hammer strike!
+    const speedZ = 28.5; // Fast downward plunge
+    let effectiveTargetZ = isMovingForward ? -8.2 : 8.2;
+    if (steeringZ > 0) {
+      effectiveTargetZ = isMovingForward ? -10.2 : 10.2;
+    } else if (steeringZ < 0) {
+      effectiveTargetZ = isMovingForward ? -6.8 : 6.8;
+    }
+
+    const distToNet = Math.abs(z0 - NET_Z);
+    const absDzTotal = Math.abs(effectiveTargetZ - z0);
+    const tLand = Math.max(0.35, absDzTotal / speedZ);
+    const yLand = 0.08;
+
+    // Ensure ball safely clears the net tape (at least 1.10m clearance)
+    const tNet = distToNet / speedZ;
+    const minNetHeight = 1.10;
+    const vyNetReq = (minNetHeight - y0 + 0.5 * GRAVITY * tNet * tNet) / Math.max(0.05, tNet);
+    const vyLandReq = (yLand - y0 + 0.5 * GRAVITY * tLand * tLand) / Math.max(0.05, tLand);
+    const vy = Math.max(vyNetReq, vyLandReq);
+
+    const vz = isMovingForward ? -speedZ : speedZ;
+    const steerMultiplier = 2.8;
+    const effectiveTargetX = targetX + steeringX * steerMultiplier;
+    const vx = (effectiveTargetX - x0) / Math.max(0.1, tLand);
+
+    return { x: vx, y: vy, z: vz };
+  }
+
+  if (shotType === 'lob') {
+    // 3. Globo (Lob): High-arching tactical shot flying over net rushers deep into baseline
+    const speedZ = steeringZ > 0 ? 13.5 : steeringZ < 0 ? 10.2 : 11.8;
+    const effectiveTargetZ = isMovingForward ? -10.6 : 10.6;
+    const absDzTotal = Math.abs(effectiveTargetZ - z0);
+    const flightTime = Math.max(1.3, absDzTotal / speedZ);
+
+    const yLand = 0.08;
+    // Parabolic vy so it reaches 5.5m - 6.5m apex and drops inside baseline
+    const vy = (yLand - y0 + 0.5 * GRAVITY * flightTime * flightTime) / flightTime;
+    const vz = isMovingForward ? -speedZ : speedZ;
+
+    const steerMultiplier = 2.4;
+    const effectiveTargetX = targetX + steeringX * steerMultiplier;
+    const vx = (effectiveTargetX - x0) / flightTime;
 
     return { x: vx, y: vy, z: vz };
   }

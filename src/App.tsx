@@ -130,13 +130,43 @@ export const App: React.FC = () => {
         return {
           badge: 'EN JUEGO',
           color: '#00e5ff',
-          text: 'Golpea con [ESPACIO] • [DERECHA]: Drive a 1 mano • [IZQUIERDA]: Revés a 2 manos • [W/S]: Profundidad',
+          text: 'Golpea [ESPACIO] (Smash si viene alta) • [SHIFT] / [E] / [S+ESPACIO]: Globo • [A/D]: Ángulo • [W/S]: Profundidad',
         };
       case 'point_over':
+        if (lastCall && (lastCall.includes('NET') || lastCall.includes('LET'))) {
+          return {
+            badge: '¡NET!',
+            color: '#38bdf8',
+            text:
+              faultCount === 1
+                ? '¡Net! La pelota tocó la red y entró en el cuadro: se repite el 2º servicio'
+                : '¡Net! La pelota tocó la red y entró en el cuadro: se repite el 1º servicio',
+          };
+        }
+        if (lastCall && lastCall.includes('RED Y FUERA')) {
+          return {
+            badge: faultCount === 1 ? '¡FALTA DE SAQUE!' : '¡DOBLE FALTA!',
+            color: faultCount === 1 ? '#f59e0b' : '#ef4444',
+            text:
+              faultCount === 1
+                ? 'La pelota tocó la red y se fue fuera: pasa al 2º servicio'
+                : 'La pelota tocó la red y se fue fuera: ¡Doble falta!',
+          };
+        }
+        if (lastCall && lastCall.includes('FALTA')) {
+          return {
+            badge: faultCount === 1 ? '¡FALTA DE SAQUE!' : '¡DOBLE FALTA!',
+            color: faultCount === 1 ? '#f59e0b' : '#ef4444',
+            text:
+              faultCount === 1
+                ? 'Servicio fuera del cuadro: pasa al 2º servicio'
+                : 'Doble falta: punto para el receptor',
+          };
+        }
         return {
           badge: 'PUNTO FINALIZADO',
           color: '#f43f5e',
-          text: 'Preparando siguiente punto...',
+          text: lastCall || 'Preparando siguiente punto...',
         };
       case 'game_over':
         return {
