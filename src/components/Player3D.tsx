@@ -193,7 +193,7 @@ export const Player3D: React.FC<Player3DProps> = ({
         currentShotType.current = useTennisStore.getState().p1ShotType;
         isSwinging.current = true;
         swingProgress.current = 1.0;
-      } else if ((keys.current.action || keys.current.lob) && !isSwinging.current && matchStatus !== 'serve_prep') {
+      } else if ((keys.current.action || keys.current.lob) && !isSwinging.current && matchStatus === 'playing') {
         const ball = useTennisStore.getState().ballPos;
         const isRight = ball[0] >= currentPos.current.x;
         const isOverhead = ball[1] >= 1.65;
@@ -204,7 +204,7 @@ export const Player3D: React.FC<Player3DProps> = ({
           currentShotType.current = 'lob';
         } else if (isSliceInput) {
           currentShotType.current = 'slice';
-        } else if (matchStatus === 'serving' || isOverhead) {
+        } else if (isOverhead) {
           currentShotType.current = 'smash';
         } else {
           currentShotType.current = isRight ? 'drive' : 'backhand';
