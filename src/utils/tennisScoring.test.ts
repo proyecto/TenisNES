@@ -187,4 +187,101 @@ describe('tennisScoring', () => {
     expect(res.nextServer).toBe('cpu');
     expect(res.announcement).toContain('SET PARA EL JUGADOR 1');
   });
+
+  it('handles 7-5 set win and 7-6 tiebreak set win for CPU', () => {
+    // 7-5 Set win for CPU
+    const state75 = {
+      p1Points: 1,
+      p2Points: 3,
+      p1Games: 5,
+      p2Games: 6,
+      p1Sets: 0,
+      p2Sets: 0,
+      server: 'p1' as const,
+    };
+    const res75 = calculatePointProgression(state75, 'cpu');
+    expect(res75.setWon).toBe('cpu');
+    expect(res75.p2Sets).toBe(1);
+    expect(res75.announcement).toContain('SET PARA LA CPU');
+
+    // 7-6 Tiebreak set win for CPU
+    const state76 = {
+      p1Points: 2,
+      p2Points: 3,
+      p1Games: 6,
+      p2Games: 6,
+      p1Sets: 0,
+      p2Sets: 0,
+      server: 'cpu' as const,
+    };
+    const res76 = calculatePointProgression(state76, 'cpu');
+    expect(res76.setWon).toBe('cpu');
+    expect(res76.p2Sets).toBe(1);
+  });
+
+  it('awards match victory upon winning 2 sets', () => {
+    const matchPointState = {
+      p1Points: 3,
+      p2Points: 1,
+      p1Games: 5,
+      p2Games: 3,
+      p1Sets: 1, // Already has 1 set
+      p2Sets: 0,
+      server: 'p1' as const,
+    };
+
+    const res = calculatePointProgression(matchPointState, 'p1');
+    expect(res.setWon).toBe('p1');
+    expect(res.matchWon).toBe('p1');
+    expect(res.p1Sets).toBe(2);
+    expect(res.announcement).toContain('PARTIDO PARA EL JUGADOR 1');
+  });
+
+  it('verifies ball touching lines within 8cm tolerance is legally IN', () => {
+    // Exact baseline is at Z = -11.89m. A ball clipping the line at -11.94m is IN
+    const lineClip = evaluateBounce({
+      x: 1.0,
+      z: -11.94,
+      isServe: false,
+      serveSide: 'deuce',
+      hitter: 'p1',
+    });
+    expect(lineClip.isInBounds).toBe(true);
+    expect(lineClip.callMessage).toBe('DENTRO');
+
+    // Deep out past baseline tolerance at -12.05m
+    const deepOut = evaluateBounce({
+      x: 1.0,
+      z: -12.05,
+      isServe: false,
+      serveSide: 'deuce',
+      hitter: 'p1',
+    });
+    expect(deepOut.isInBounds).toBe(false);
+    expect(deepOut.callMessage).toBe('¡FUERA!');
+  });
+
+  it('evaluates CPU rally shots landing in or out on P1 side of court', () => {
+    // In-bounds on P1 side (Z in [0, 11.89])
+    const cpuShotIn = evaluateBounce({
+      x: 2.5,
+      z: 8.5,
+      isServe: false,
+      serveSide: 'deuce',
+      hitter: 'cpu',
+    });
+    expect(cpuShotIn.isInBounds).toBe(true);
+    expect(cpuShotIn.callMessage).toBe('DENTRO');
+
+    // Out past P1 baseline (Z = 12.10m)
+    const cpuShotLong = evaluateBounce({
+      x: 2.5,
+      z: 12.10,
+      isServe: false,
+      serveSide: 'deuce',
+      hitter: 'cpu',
+    });
+    expect(cpuShotLong.isInBounds).toBe(false);
+    expect(cpuShotLong.callMessage).toBe('¡FUERA!');
+  });
 });

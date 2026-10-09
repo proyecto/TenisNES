@@ -142,5 +142,53 @@ describe('tennisBallistics', () => {
     const heightAtNet = 2.1 + smashShot.y * timeToNet - 0.5 * 9.81 * timeToNet * timeToNet;
     expect(heightAtNet).toBeGreaterThanOrEqual(1.10);
   });
+
+  it('correctly resolves distinct strategies in resolveShotStrategy', () => {
+    // Serve strategy
+    const serve = calculateShotVelocity({ fromPos: [0, 2.2, 11], targetZ: -8, isServe: true });
+    expect(serve).toBeDefined();
+
+    // Smash strategy
+    const smash = calculateShotVelocity({ fromPos: [0, 2.2, 8], targetZ: -8, isServe: false, shotType: 'smash' });
+    expect(Math.abs(smash.z)).toBeGreaterThan(25);
+
+    // Lob strategy
+    const lob = calculateShotVelocity({ fromPos: [0, 1.0, 8], targetZ: -8, isServe: false, shotType: 'lob' });
+    expect(lob.y).toBeGreaterThan(5);
+
+    // Groundstroke strategy
+    const ground = calculateShotVelocity({ fromPos: [0, 1.0, 8], targetZ: -8, isServe: false, shotType: 'drive' });
+    expect(Math.abs(ground.z)).toBeLessThan(25);
+  });
+
+  it('evaluates inverted reach orientation and expanded stretch reach for opponent (CPU)', () => {
+    const cpuPos: [number, number, number] = [0, 0, -10.0];
+
+    // For CPU facing +Z: left side (dx < 0) is right-hand forehand drive!
+    const cpuForehand = evaluateHitReach(cpuPos, [-1.5, 1.1, -9.6], true);
+    expect(cpuForehand.canHit).toBe(true);
+    expect(cpuForehand.shotType).toBe('drive');
+
+    // For CPU facing +Z: right side (dx > 0) is two-handed backhand with stretch reach up to 1.70m
+    const cpuBackhand = evaluateHitReach(cpuPos, [1.4, 1.1, -9.6], true);
+    expect(cpuBackhand.canHit).toBe(true);
+    expect(cpuBackhand.shotType).toBe('backhand');
+  });
+
+  it('calculates shot trajectory flying from CPU side (Z < 0) to Player 1 side (Z > 0)', () => {
+    const cpuToP1Shot = calculateShotVelocity({
+      fromPos: [0, 1.0, -11.5],
+      targetZ: 8.5,
+      isServe: false,
+      shotType: 'drive',
+    });
+
+    // Z velocity must be positive (towards +Z)
+    expect(cpuToP1Shot.z).toBeGreaterThan(0);
+    // Net clearance at Z = 0
+    const timeToNet = 11.5 / cpuToP1Shot.z;
+    const heightAtNet = 1.0 + cpuToP1Shot.y * timeToNet - 0.5 * 9.81 * timeToNet * timeToNet;
+    expect(heightAtNet).toBeGreaterThanOrEqual(1.20);
+  });
 });
 

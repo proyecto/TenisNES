@@ -112,4 +112,79 @@ describe('useTennisStore', () => {
     expect(state.lastCall).toContain('ACE');
     expect(state.lastCallColor).toBe('#fbbf24');
   });
+
+  it('tracks shot speed in kmh, mph, and updates max serve records', () => {
+    useTennisStore.setState({ maxServeSpeedP1: 0, maxServeSpeedCpu: 0 });
+
+    // Normal rally shot (not a serve)
+    useTennisStore.getState().recordShotSpeed(140, 'DRIVE POTENTE', 'p1', false);
+    let state = useTennisStore.getState();
+    expect(state.lastSpeedKmh).toBe(140);
+    expect(state.lastSpeedMph).toBe(87); // Math.round(140 * 0.621371)
+    expect(state.lastSpeedLabel).toBe('DRIVE POTENTE');
+    expect(state.lastSpeedHitter).toBe('p1');
+    expect(state.maxServeSpeedP1).toBe(0); // Not a serve
+
+    // P1 Serve shot
+    useTennisStore.getState().recordShotSpeed(205, '1º SAQUE PLANO', 'p1', true);
+    state = useTennisStore.getState();
+    expect(state.lastSpeedKmh).toBe(205);
+    expect(state.maxServeSpeedP1).toBe(205);
+
+    // CPU Serve shot
+    useTennisStore.getState().recordShotSpeed(195, '1º SAQUE CPU', 'cpu', true);
+    state = useTennisStore.getState();
+    expect(state.maxServeSpeedCpu).toBe(195);
+  });
+
+  it('records Hawk-Eye bounce locations and distance to line', () => {
+    useTennisStore.getState().recordBounceLocation(3.95, -11.5, true, 8, 12345);
+    const state = useTennisStore.getState();
+    expect(state.lastBouncePos).toEqual([3.95, -11.5]);
+    expect(state.lastBounceInBounds).toBe(true);
+    expect(state.lastBounceDistanceCm).toBe(8);
+    expect(state.lastBounceTime).toBe(12345);
+  });
+
+  it('triggers P1 and CPU swing triggers with shot type', () => {
+    useTennisStore.setState({ p1SwingTrigger: 0, cpuSwingTrigger: 0 });
+
+    useTennisStore.getState().triggerP1Swing('lob');
+    let state = useTennisStore.getState();
+    expect(state.p1SwingTrigger).toBe(1);
+    expect(state.p1ShotType).toBe('lob');
+
+    useTennisStore.getState().triggerCpuSwing('smash');
+    state = useTennisStore.getState();
+    expect(state.cpuSwingTrigger).toBe(1);
+    expect(state.cpuShotType).toBe('smash');
+  });
+
+  it('resets serve state and coordinates on resetServe and resetPoint', () => {
+    useTennisStore.setState({
+      matchStatus: 'point_over',
+      lastHitter: 'p1',
+      lastCall: 'PUNTO',
+      rallyCount: 5,
+    });
+
+    useTennisStore.getState().resetServe();
+    let state = useTennisStore.getState();
+    expect(state.matchStatus).toBe('serve_prep');
+    expect(state.lastHitter).toBeNull();
+    expect(state.lastCall).toBeNull();
+
+    useTennisStore.getState().resetPoint();
+    state = useTennisStore.getState();
+    expect(state.rallyCount).toBe(0);
+  });
+
+  it('updates player positions via setP1Pos and setCpuPos', () => {
+    useTennisStore.getState().setP1Pos([1.5, 0, 11.0]);
+    useTennisStore.getState().setCpuPos([-1.5, 0, -11.0]);
+
+    const state = useTennisStore.getState();
+    expect(state.p1Pos).toEqual([1.5, 0, 11.0]);
+    expect(state.cpuPos).toEqual([-1.5, 0, -11.0]);
+  });
 });
