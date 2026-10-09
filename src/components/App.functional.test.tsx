@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { App } from '../App';
 import { useTennisStore } from '../store/useTennisStore';
 
@@ -209,5 +209,45 @@ describe('App Functional & Integration Tests', () => {
 
     expect(screen.getByText('PARTIDO FINALIZADO')).toBeInTheDocument();
     expect(screen.getByText('¡Fin del partido!')).toBeInTheDocument();
+  });
+
+  it('toggles audio mute when audio button is clicked', () => {
+    render(<App />);
+
+    const audioBtn = screen.getByTestId('audio-toggle-btn');
+    expect(screen.getByText('AUDIO')).toBeInTheDocument();
+    expect(useTennisStore.getState().isMuted).toBe(false);
+
+    act(() => {
+      fireEvent.click(audioBtn);
+    });
+
+    expect(screen.getByText('MUTED')).toBeInTheDocument();
+    expect(useTennisStore.getState().isMuted).toBe(true);
+
+    act(() => {
+      fireEvent.click(audioBtn);
+    });
+
+    expect(screen.getByText('AUDIO')).toBeInTheDocument();
+    expect(useTennisStore.getState().isMuted).toBe(false);
+  });
+
+  it('toggles audio mute when pressing M key', () => {
+    render(<App />);
+
+    expect(useTennisStore.getState().isMuted).toBe(false);
+
+    act(() => {
+      fireEvent.keyDown(window, { key: 'm' });
+    });
+
+    expect(useTennisStore.getState().isMuted).toBe(true);
+
+    act(() => {
+      fireEvent.keyDown(window, { key: 'M' });
+    });
+
+    expect(useTennisStore.getState().isMuted).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { calculatePointProgression } from '../utils/tennisScoring';
+import { tennisAudio } from '../utils/tennisAudio';
 
 /**
  * @file useTennisStore.ts
@@ -105,6 +106,10 @@ export interface ScoreState {
   lastBounceDistanceCm: number | null;
   /** High-resolution timestamp of last bounce */
   lastBounceTime: number;
+  /** Whether all audio playback is muted */
+  isMuted: boolean;
+  /** Master volume factor between 0.0 and 1.0 */
+  volume: number;
 }
 
 interface TennisStore extends ScoreState {
@@ -140,6 +145,10 @@ interface TennisStore extends ScoreState {
   recordShotSpeed: (speedKmh: number, label: string, hitter: 'p1' | 'cpu', isServe?: boolean) => void;
   /** Logs Hawk-Eye bounce coordinates and distance to line */
   recordBounceLocation: (x: number, z: number, inBounds: boolean, distanceCm: number, timestamp: number) => void;
+  /** Toggles audio mute state */
+  toggleMute: () => void;
+  /** Updates audio volume level */
+  setVolume: (volume: number) => void;
 }
 
 export const useTennisStore = create<TennisStore>((set) => ({
@@ -178,6 +187,21 @@ export const useTennisStore = create<TennisStore>((set) => ({
   lastBounceInBounds: null,
   lastBounceDistanceCm: null,
   lastBounceTime: 0,
+  isMuted: false,
+  volume: 0.8,
+
+  toggleMute: () =>
+    set((state) => {
+      const nextMuted = !state.isMuted;
+      tennisAudio.setMuted(nextMuted);
+      return { isMuted: nextMuted };
+    }),
+
+  setVolume: (volume: number) =>
+    set(() => {
+      tennisAudio.setVolume(volume);
+      return { volume };
+    }),
 
   recordShotSpeed: (speedKmh, label, hitter, isServe = false) =>
     set((state) => {
@@ -247,6 +271,31 @@ export const useTennisStore = create<TennisStore>((set) => ({
         ? '#fbbf24'
         : (winner === 'p1' ? '#ccff00' : '#f43f5e');
 
+      // Audio feedback & commentary
+      if (isAce) {
+        tennisAudio.playUmpireTone('ace');
+        tennisAudio.playCrowdCheer('roar');
+        tennisAudio.speakUmpireCall('Ace!');
+      } else if (next.matchWon) {
+        tennisAudio.playUmpireTone('game');
+        tennisAudio.playCrowdCheer('roar');
+        tennisAudio.speakUmpireCall(`Game, set and match, ${winner === 'p1' ? 'Nadal' : 'Murray'}`);
+      } else if (next.gameWon !== null) {
+        tennisAudio.playUmpireTone('game');
+        tennisAudio.playCrowdCheer('applause');
+        tennisAudio.speakUmpireCall(`Game, ${winner === 'p1' ? 'Nadal' : 'Murray'}`);
+      } else {
+        if (state.rallyCount >= 4) {
+          tennisAudio.playCrowdCheer('applause');
+        }
+        if (next.announcement.includes('IGUALES')) {
+          tennisAudio.playUmpireTone('deuce');
+          tennisAudio.speakUmpireCall('Deuce');
+        } else if (next.announcement.includes('VENTAJA')) {
+          tennisAudio.speakUmpireCall(winner === 'p1' ? 'Advantage Nadal' : 'Advantage Murray');
+        }
+      }
+
       return {
         rallyCount: 0,
         matchStatus: next.matchWon ? 'game_over' : 'point_over',
@@ -270,7 +319,9 @@ export const useTennisStore = create<TennisStore>((set) => ({
 
   recordFault: (wasNetFault = false) =>
     set((state) => {
+      tennisAudio.playUmpireTone('fault');
       if (state.faultCount === 0) {
+        tennisAudio.speakUmpireCall(wasNetFault ? 'Fault, into the net' : 'Fault!');
         return {
           faultCount: 1,
           lastCall: wasNetFault ? '¡RED Y FUERA! FALTA (2º SERVICIO)' : '¡FALTA! SEGUNDO SERVICIO',
@@ -279,6 +330,7 @@ export const useTennisStore = create<TennisStore>((set) => ({
           rallyCount: 0,
         };
       } else {
+        tennisAudio.speakUmpireCall('Double fault!');
         // Double fault: receiver wins the point
         const receiver = state.server === 'p1' ? 'cpu' : 'p1';
         const next = calculatePointProgression(
@@ -327,15 +379,19 @@ export const useTennisStore = create<TennisStore>((set) => ({
     }),
 
   recordLet: () =>
-    set((state) => ({
-      lastCall:
-        state.faultCount === 1
-          ? '¡NET! SE REPITE EL 2º SERVICIO'
-          : '¡NET! SE REPITE EL 1º SERVICIO',
-      lastCallColor: '#38bdf8',
-      matchStatus: 'point_over',
-      rallyCount: 0,
-    })),
+    set((state) => {
+      tennisAudio.playUmpireTone('let');
+      tennisAudio.speakUmpireCall('Let, first service');
+      return {
+        lastCall:
+          state.faultCount === 1
+            ? '¡NET! SE REPITE EL 2º SERVICIO'
+            : '¡NET! SE REPITE EL 1º SERVICIO',
+        lastCallColor: '#38bdf8',
+        matchStatus: 'point_over',
+        rallyCount: 0,
+      };
+    }),
 
   setP1Pos: (pos) => set({ p1Pos: pos }),
   setCpuPos: (pos) => set({ cpuPos: pos }),

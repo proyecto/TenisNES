@@ -187,4 +187,17 @@ describe('useTennisStore', () => {
     expect(state.p1Pos).toEqual([1.5, 0, 11.0]);
     expect(state.cpuPos).toEqual([-1.5, 0, -11.0]);
   });
+
+  it('manages audio mute and volume controls in store', () => {
+    useTennisStore.setState({ isMuted: false, volume: 0.8 });
+
+    useTennisStore.getState().toggleMute();
+    expect(useTennisStore.getState().isMuted).toBe(true);
+
+    useTennisStore.getState().toggleMute();
+    expect(useTennisStore.getState().isMuted).toBe(false);
+
+    useTennisStore.getState().setVolume(0.4);
+    expect(useTennisStore.getState().volume).toBe(0.4);
+  });
 });

@@ -19,6 +19,7 @@ import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { calculateShotVelocity, evaluateHitReach } from '../utils/tennisBallistics';
 import { evaluateBounce } from '../utils/tennisScoring';
 import { selectCpuShot } from '../utils/tennisCpuAI';
+import { tennisAudio } from '../utils/tennisAudio';
 
 /**
  * Optional callback fired on ball bounce or net deflection.
@@ -298,6 +299,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           const speedMs = Math.hypot(shot.x, shot.y, shot.z);
           const speedKmh = Math.round(speedMs * 3.6);
           const isAcePower = speedKmh >= 195;
+          tennisAudio.playRacketHit('serve', speedKmh);
           useTennisStore.getState().recordShotSpeed(
             speedKmh,
             isAcePower ? '¡SAQUE AS CAÑÓN!' : '1º SAQUE PLANO',
@@ -347,6 +349,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
           // Record CPU serve speed for TV radar
           const cpuSpeedMs = Math.hypot(cpuServeShot.x, cpuServeShot.y, cpuServeShot.z);
           const cpuSpeedKmh = Math.round(cpuSpeedMs * 3.6);
+          tennisAudio.playRacketHit('serve', cpuSpeedKmh);
           useTennisStore.getState().recordShotSpeed(
             cpuSpeedKmh,
             '1º SERVICIO CPU',
@@ -455,6 +458,10 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
               ? 'DEJADA DE REVÉS'
               : 'REVÉS A 2 MANOS';
         }
+        tennisAudio.playRacketHit(
+          shotType === 'smash' ? 'smash' : shotType === 'lob' ? 'lob' : 'flat',
+          p1SpeedKmh
+        );
         useTennisStore.getState().recordShotSpeed(p1SpeedKmh, p1Label, 'p1', false);
 
         setLastHitter('p1');
@@ -515,6 +522,10 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         // Record CPU rally shot speed for TV radar
         const cpuRallySpeedMs = Math.hypot(cpuShot.x, cpuShot.y, cpuShot.z);
         const cpuRallySpeedKmh = Math.round(cpuRallySpeedMs * 3.6);
+        tennisAudio.playRacketHit(
+          cpuShotType === 'smash' ? 'smash' : cpuShotType === 'lob' ? 'lob' : 'flat',
+          cpuRallySpeedKmh
+        );
         useTennisStore.getState().recordShotSpeed(cpuRallySpeedKmh, decision.label, 'cpu', false);
 
         useTennisStore.getState().triggerCpuSwing(cpuShotType);
@@ -541,6 +552,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
         lastBounceTime.current = t;
         collisionTriggeredBounce.current = false;
         bouncesSinceHit.current += 1;
+        tennisAudio.playBallBounce('grass');
         onBounce?.();
 
         // DYNAMIC TENNIS BOUNCE LIFT (First Bounce):
@@ -666,6 +678,10 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             Math.abs(ballPos.z) >= 15.2 ||
             Math.abs(ballPos.x) >= 9.5;
 
+          if (hasHitStandsOrWall) {
+            tennisAudio.playBallBounce('stand');
+          }
+
           if (isSecondBounce || hasHitStandsOrWall) {
             pointResolved.current = true;
             awardPoint(currentHitter, isAce);
@@ -679,6 +695,7 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             ballPos.y < -0.5;
 
           if (isOutOfBoundsDirectly) {
+            tennisAudio.playBallBounce('stand');
             pointResolved.current = true;
             if (isServeShot.current) {
               recordFault(serveTouchedNet.current);
@@ -750,8 +767,10 @@ export const TennisBall3D: React.FC<TennisBall3DProps> = ({ onBounce }) => {
             if (isServeShot.current) {
               serveTouchedNet.current = true;
             }
+            tennisAudio.playNetHit();
             onBounce?.();
           } else {
+            tennisAudio.playBallBounce('grass');
             onBounce?.();
             collisionTriggeredBounce.current = true;
           }

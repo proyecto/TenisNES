@@ -38,6 +38,8 @@ export const App: React.FC = () => {
     lastBounceDistanceCm,
     lastBounceInBounds,
     lastBounceTime,
+    isMuted,
+    toggleMute,
   } = useTennisStore();
 
   // Match duration stopwatch in seconds
@@ -49,6 +51,17 @@ export const App: React.FC = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Keyboard shortcut: Press 'M' to toggle sound
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'm' || e.key === 'M') {
+        toggleMute();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleMute]);
 
   const formatMatchTime = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -242,8 +255,34 @@ export const App: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#facc15' }}>
             <span>🏆</span> THE CHAMPIONSHIPS • WIMBLEDON
           </div>
-          <div style={{ color: '#cbd5e1', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
-            ⏱ {formatMatchTime(matchElapsedSeconds)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ color: '#cbd5e1', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
+              ⏱ {formatMatchTime(matchElapsedSeconds)}
+            </div>
+            <button
+              onClick={toggleMute}
+              title={isMuted ? 'Activar sonido [M]' : 'Silenciar sonido [M]'}
+              data-testid="audio-toggle-btn"
+              style={{
+                background: isMuted ? 'rgba(239, 68, 68, 0.25)' : 'rgba(204, 255, 0, 0.18)',
+                border: `1px solid ${isMuted ? 'rgba(239, 68, 68, 0.5)' : 'rgba(204, 255, 0, 0.4)'}`,
+                color: isMuted ? '#f87171' : '#ccff00',
+                borderRadius: 6,
+                padding: '1px 7px',
+                fontSize: 9,
+                fontWeight: 800,
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                letterSpacing: 0.5,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span>{isMuted ? '🔇' : '🔊'}</span>
+              <span>{isMuted ? 'MUTED' : 'AUDIO'}</span>
+            </button>
           </div>
         </div>
 
