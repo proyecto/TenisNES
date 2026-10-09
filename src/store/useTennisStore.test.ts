@@ -203,6 +203,8 @@ describe('useTennisStore', () => {
 
   it('manages difficulty, pause state, and tournament menu open/close', () => {
     expect(useTennisStore.getState().difficulty).toBe('pro');
+    expect(useTennisStore.getState().isMenuOpen).toBe(true);
+    expect(useTennisStore.getState().isPaused).toBe(true);
 
     useTennisStore.getState().setDifficulty('legend');
     expect(useTennisStore.getState().difficulty).toBe('legend');

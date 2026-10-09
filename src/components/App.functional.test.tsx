@@ -37,6 +37,10 @@ describe('App Functional & Integration Tests', () => {
       lastBounceInBounds: null,
       lastBounceDistanceCm: null,
       lastBounceTime: 0,
+      isMuted: false,
+      difficulty: 'pro',
+      isMenuOpen: true,
+      isPaused: true,
     });
   });
 
@@ -47,7 +51,7 @@ describe('App Functional & Integration Tests', () => {
     expect(screen.getByTestId('tennis-scene-canvas')).toBeInTheDocument();
 
     // Wimbledon TV Scorebug header
-    expect(screen.getByText(/THE CHAMPIONSHIPS • WIMBLEDON/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/THE CHAMPIONSHIPS • WIMBLEDON/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/R\. NADAL/i)).toBeInTheDocument();
     expect(screen.getByText(/A\. MURRAY/i)).toBeInTheDocument();
 
@@ -159,8 +163,13 @@ describe('App Functional & Integration Tests', () => {
     expect(screen.queryByText('DECISIÓN DEL JUEZ ÁRBITRO')).not.toBeInTheDocument();
   });
 
-  it('updates match duration timer every second', () => {
+  it('updates match duration timer every second when match is active', () => {
     render(<App />);
+
+    // Unpause / start match so stopwatch runs
+    act(() => {
+      useTennisStore.getState().setMenuOpen(false);
+    });
 
     expect(screen.getByText(/00:00/)).toBeInTheDocument();
 
@@ -215,21 +224,21 @@ describe('App Functional & Integration Tests', () => {
     render(<App />);
 
     const audioBtn = screen.getByTestId('audio-toggle-btn');
-    expect(screen.getByText('AUDIO')).toBeInTheDocument();
+    expect(audioBtn).toHaveTextContent('AUDIO');
     expect(useTennisStore.getState().isMuted).toBe(false);
 
     act(() => {
       fireEvent.click(audioBtn);
     });
 
-    expect(screen.getByText('MUTED')).toBeInTheDocument();
+    expect(audioBtn).toHaveTextContent('MUTED');
     expect(useTennisStore.getState().isMuted).toBe(true);
 
     act(() => {
       fireEvent.click(audioBtn);
     });
 
-    expect(screen.getByText('AUDIO')).toBeInTheDocument();
+    expect(audioBtn).toHaveTextContent('AUDIO');
     expect(useTennisStore.getState().isMuted).toBe(false);
   });
 
@@ -251,25 +260,17 @@ describe('App Functional & Integration Tests', () => {
     expect(useTennisStore.getState().isMuted).toBe(false);
   });
 
-  it('opens and closes the Game Menu using HUD button and Escape key', () => {
+  it('opens Game Menu initially on page load/reload and allows closing/opening via HUD button and Escape key', () => {
     render(<App />);
 
-    // Menu should be closed initially
-    expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
-
-    // Click on HUD Menu button
-    const menuBtn = screen.getByTestId('menu-toggle-btn');
-    act(() => {
-      fireEvent.click(menuBtn);
-    });
-
-    // Menu overlay is rendered
+    // Menu MUST be rendered initially on page reload/mount
     expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
     expect(screen.getByText(/MENÚ DE PARTIDO & CONFIGURACIÓN/i)).toBeInTheDocument();
+    expect(screen.getByText(/EMPEZAR PARTIDO/i)).toBeInTheDocument();
     expect(useTennisStore.getState().isMenuOpen).toBe(true);
     expect(useTennisStore.getState().isPaused).toBe(true);
 
-    // Resume button closes the menu
+    // Clicking "Empezar Partido" closes the menu and resumes play
     const resumeBtn = screen.getByTestId('resume-match-btn');
     act(() => {
       fireEvent.click(resumeBtn);
@@ -277,9 +278,10 @@ describe('App Functional & Integration Tests', () => {
     expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
     expect(useTennisStore.getState().isMenuOpen).toBe(false);
 
-    // Pressing 'Escape' opens the menu again
+    // Click on HUD Menu button opens it again
+    const menuBtn = screen.getByTestId('menu-toggle-btn');
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.click(menuBtn);
     });
     expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
 
@@ -288,6 +290,12 @@ describe('App Functional & Integration Tests', () => {
       fireEvent.keyDown(window, { key: 'Escape' });
     });
     expect(screen.queryByTestId('game-menu-overlay')).not.toBeInTheDocument();
+
+    // Pressing 'Escape' opens the menu again
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(screen.getByTestId('game-menu-overlay')).toBeInTheDocument();
   });
 
   it('allows changing CPU difficulty in Game Menu', () => {

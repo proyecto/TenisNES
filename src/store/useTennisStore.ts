@@ -205,8 +205,8 @@ export const useTennisStore = create<TennisStore>((set) => ({
   isMuted: false,
   volume: 0.8,
   difficulty: 'pro',
-  isMenuOpen: false,
-  isPaused: false,
+  isMenuOpen: true,
+  isPaused: true,
 
   toggleMute: () =>
     set((state) => {

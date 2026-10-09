@@ -17,9 +17,25 @@ export const GameMenuOverlay: React.FC<GameMenuOverlayProps> = ({ onRestartMatch
     volume,
     setVolume,
     resetMatch,
+    p1Points,
+    p2Points,
+    p1Games,
+    p2Games,
+    p1Sets,
+    p2Sets,
+    rallyCount,
   } = useTennisStore();
 
   if (!isMenuOpen) return null;
+
+  const isMatchStarted =
+    p1Points > 0 ||
+    p2Points > 0 ||
+    p1Games > 0 ||
+    p2Games > 0 ||
+    p1Sets > 0 ||
+    p2Sets > 0 ||
+    rallyCount > 0;
 
   const handleResume = () => {
     setMenuOpen(false);
@@ -359,7 +375,7 @@ export const GameMenuOverlay: React.FC<GameMenuOverlayProps> = ({ onRestartMatch
               transition: 'all 0.2s',
             }}
           >
-            ▶ CONTINUAR PARTIDO
+            {isMatchStarted ? '▶ CONTINUAR PARTIDO' : '▶ EMPEZAR PARTIDO'}
           </button>
         </div>
       </div>
